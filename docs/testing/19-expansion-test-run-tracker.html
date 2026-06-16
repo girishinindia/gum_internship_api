@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>GI Internship — Expansion Test-Run Tracker (R0–R6)</title>
+<style>
+  :root { --blue:#0284c7; --green:#188038; --grey:#5F6368; --line:#DADCE0; --bg:#F1F5F9; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#202124; margin:0; padding:14px 18px; font-size:10px; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid var(--blue); padding-bottom:6px; margin-bottom:8px; }
+  h1 { font-size:16px; margin:0; color:var(--blue); }
+  .sub { color:var(--grey); font-size:10px; }
+  .meta { text-align:right; font-size:10px; color:var(--grey); }
+  .meta b { color:#202124; }
+  .legend { display:flex; gap:14px; margin:6px 0 8px; font-size:9px; color:var(--grey); }
+  .legend span b { color:#202124; }
+  table { width:100%; border-collapse:collapse; }
+  .wrap { column-count:2; column-gap:16px; }
+  td { border:0.5px solid var(--line); padding:1.5px 4px; vertical-align:middle; }
+  tr.hdr td { background:var(--bg); font-weight:700; font-size:10px; padding:3px 4px; border:0.5px solid var(--line); }
+  tr.hdr .own { float:right; color:var(--blue); font-weight:700; }
+  tr.hdr .cnt { float:right; color:var(--grey); font-weight:400; margin-right:8px; }
+  .id { font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:600; width:42px; }
+  .ti { font-size:9px; }
+  .b { text-align:center; width:15px; font-size:11px; color:var(--grey); }
+  .sev { width:22px; }
+  table, tr { break-inside:avoid; }
+  .footer { margin-top:10px; font-size:9px; color:var(--grey); display:flex; justify-content:space-between; }
+  @media print { body { padding:8mm; } @page { size:A4 portrait; margin:8mm; } .noprint { display:none; } }
+</style></head>
+<body>
+<header>
+  <div><h1>GI Internship — Expansion Test-Run Tracker</h1>
+    <div class="sub">R0–R6 (services roadmap) · tick P (pass) / F (fail) / B (blocked); note severity S1–S4 on failures · full detail in docs 11–18</div></div>
+  <div class="meta">Cycle: <b>____________</b> &nbsp; Build/commit: <b>____________</b><br>
+    Tester: <b>____________</b> &nbsp; Date: <b>____________</b></div>
+</header>
+<div class="legend">
+  <span><b>P</b> pass &nbsp; <b>F</b> fail &nbsp; <b>B</b> blocked/N-A</span>
+  <span>Sev: <b>S1</b> blocker · <b>S2</b> major · <b>S3</b> minor · <b>S4</b> cosmetic</span>
+  <span>Modes: <b>AI_DRY_RUN</b> + <b>PAYMENTS_DRY_RUN</b> = true</span>
+</div>
+
+<div class="wrap">
+<table>
+<!-- R0 -->
+<tr class="hdr"><td colspan="5">R0 — Enablers (infra/ops) <span class="cnt">doc 17</span></td></tr>
+<tr><td class="id">R0-1</td><td class="ti">pgvector enabled (≥0.8.0) + vector op works</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R0-2</td><td class="ti">HNSW index on lesson_embeddings present</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R0-3</td><td class="ti">3 pg_cron jobs scheduled + a succeeded run</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R0-4</td><td class="ti">queue logs "job done"; failure doesn't break chain</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R0-5</td><td class="ti">FCM inert: "push skipped", no error/crash</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R1 -->
+<tr class="hdr"><td colspan="5">R1 — Portfolio / wallet / scholarships <span class="cnt">doc 11</span></td></tr>
+<tr><td class="id">R1-1</td><td class="ti">PUT portfolio (handle, visibility) → publicUrl</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R1-2</td><td class="ti">public /p/:handle renders; private → 404</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R1-3</td><td class="ti">duplicate/taken handle rejected</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R1-4</td><td class="ti">resume PDF signed URL; expires after TTL</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R1-5</td><td class="ti">scholarship issued + emailed; assignee can use</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R1-6</td><td class="ti">non-assignee rejected; per-user limit 1</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R2 -->
+<tr class="hdr"><td colspan="5">R2 — AI layer <span class="cnt">doc 12</span></td></tr>
+<tr><td class="id">R2-1</td><td class="ti">reindex → embeddings stored (1536-dim)</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R2-2</td><td class="ti">/ai/ask grounded answer + citations + thread</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R2-3</td><td class="ti">not-enrolled → 403; injection flagged + defanged</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R2-4</td><td class="ti">PII stripped before model + in usage ledger</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R2-5</td><td class="ti">daily cost cap → 429 AI_CAP_EXCEEDED</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R2-6</td><td class="ti">interview 5 Qs → score; cached translation</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R3 -->
+<tr class="hdr"><td colspan="5">R3 — Gamification & forum <span class="cnt">doc 13</span></td></tr>
+<tr><td class="id">R3-1</td><td class="ti">lesson done → XP+first_steps+streak</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R3-2</td><td class="ti">XP idempotent (no double award)</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R3-3</td><td class="ti">forum thread/reply; instructor badge; accept → resolved</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R3-4</td><td class="ti">pin+lock; locked reply 409; leaderboard ranks</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R3-5</td><td class="ti">cert → linkedinAddUrl present on /certificates/me</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R4 -->
+<tr class="hdr"><td colspan="5">R4 — Mentorship & assessment <span class="cnt">doc 14</span></td></tr>
+<tr><td class="id">R4-1</td><td class="ti">mentor free + paid slots; student lists open</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R4-2</td><td class="ti">free book → confirmed + Zoom joinUrl</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R4-3</td><td class="ti">paid → order; bad sig 401; dev_ok → confirmed</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R4-4</td><td class="ti">double-book booked slot → 409</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R4-5</td><td class="ti">diagnostic no answer-key; score+readiness+recos</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R5 -->
+<tr class="hdr"><td colspan="5">R5 — Job board & employers <span class="cnt">doc 15</span></td></tr>
+<tr><td class="id">R5-1</td><td class="ti">register employer; one per user</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R5-2</td><td class="ti">submit job unverified → 409</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R5-3</td><td class="ti">admin verify → submit → publish → on board</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R5-4</td><td class="ti">apply auto-attaches portfolio+resume</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R5-5</td><td class="ti">dup apply → 409; own-job apply → 400</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R5-6</td><td class="ti">employer pipeline; applicant sees status</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+
+<!-- R6 -->
+<tr class="hdr"><td colspan="5">R6 — B2B / CPD / bundles <span class="cnt">doc 16</span></td></tr>
+<tr><td class="id">R6-1</td><td class="ti">register org; add member by email</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R6-2</td><td class="ti">seat purchase → B2B GST invoice (correct split)</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R6-3</td><td class="ti">assign seat → enroll; seat-pool guard 409</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R6-4</td><td class="ti">team dashboard: seats/members/assignments/invoices</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R6-5</td><td class="ti">bundle free → enroll all; paid → order → confirm</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">R6-6</td><td class="ti">CPD award on cert (weeks×5); idempotent</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+</table>
+</div>
+
+<div class="footer">
+  <span>GI Internship (Grow Up More) — expansion suite R0–R6 · details in docs/testing/11–18</span>
+  <span>P __ / F __ / B __ &nbsp;·&nbsp; Sign-off: ____________</span>
+</div>
+</body></html>

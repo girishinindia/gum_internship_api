@@ -1,0 +1,3081 @@
+openapi: 3.1.0
+info:
+  title: GUM Internships API
+  version: 1.0.0
+  description: >
+    MVP API contract. Every response uses the envelope {success, data, error, meta}.
+    DB is snake_case; this API is camelCase. Auth = Bearer JWT (access 15m, refresh 30d).
+    Pagination on list endpoints: ?page=&limit= (default 20, max 100).
+    Endpoints marked "Public" need no token. x-required-roles lists allowed roles.
+servers:
+  - url: https://api.gum-internships.example.com/v1
+    description: Production
+  - url: https://staging-api.gum-internships.example.com/v1
+    description: Staging
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: Registration, login, OTP, sessions
+  - name: Users
+    description: Own profile, preferences, devices
+  - name: Instructor
+    description: Instructor application and own profile
+  - name: Catalog
+    description: Public browse (no auth)
+  - name: Internships
+    description: Instructor authoring (internships, sections, lessons)
+  - name: Batches
+    description: Cohort management
+  - name: Enrollments
+    description: Enroll, my learning, drop
+  - name: Learning
+    description: Playback and progress
+  - name: Live Sessions
+    description: Scheduling, join, attendance
+  - name: Commerce
+    description: Orders, coupons, invoices, refunds, Razorpay webhook
+  - name: Projects & Submissions
+    description: Projects, weekly tasks, submissions, mentor reviews
+  - name: Quizzes
+    description: Quiz authoring and attempts
+  - name: Certificates
+    description: Claim, download, public verification
+  - name: Notifications
+    description: In-app feed and read state
+  - name: Instructor Finance
+    description: Earnings and settlements (instructor view)
+  - name: Support
+    description: Support tickets (user side)
+  - name: Admin
+    description: Moderation, users, finance, reports, CMS, audit
+
+paths:
+  # ============================================================ AUTH
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register (student) — account starts pending_verification; OTP sent to email AND phone
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, phone, password]
+              properties:
+                fullName: { type: string, minLength: 2 }
+                email: { type: string, format: email }
+                phone: { type: string, description: 'Indian mobile; 10 digits or +91…' }
+                password: { type: string, minLength: 8, description: 'Min 8 chars, letter + number' }
+                track: { type: string, enum: [education, employed] }
+                marketingConsent: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Created — verify email or phone to activate
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          userId: { type: integer, format: int64 }
+                          verificationRequired: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email OR phone + password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: Email or phone }
+                password: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokensResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/otp/request:
+    post:
+      tags: [Auth]
+      summary: Request/resend OTP — 60s cooldown + 3/hour per identifier (enforced server-side)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination, channel, purpose]
+              properties:
+                destination: { type: string, description: Phone (+91…) or email }
+                channel: { type: string, enum: [sms, email] }
+                purpose: { type: string, enum: [email_verify, phone_verify, password_reset] }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/otp/verify:
+    post:
+      tags: [Auth]
+      summary: Verify email/phone OTP — first verified channel activates the account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination, purpose, code]
+              properties:
+                destination: { type: string }
+                purpose: { type: string, enum: [email_verify, phone_verify] }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '410': { description: OTP expired/attempts exhausted, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate refresh token, get new pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokensResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Send password-reset link (always 200 to avoid enumeration)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Set new password with the emailed OTP; revokes ALL sessions
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, newPassword]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, minLength: 6, maxLength: 6 }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '410': { description: Code expired/attempts exhausted, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /auth/password/change:
+    post:
+      tags: [Auth]
+      summary: Change password (authenticated) — revokes all other sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Revoke every session for the current user
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /auth/email/verify:
+    post:
+      tags: [Auth]
+      summary: Verify email with emailed token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+  # ============================================================ USERS
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Own profile with roles
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/UserMe' } }
+    patch:
+      tags: [Users]
+      summary: Update own profile (name, avatarUrl)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string }
+                avatarUrl: { type: string }
+                track: { type: string, enum: [education, employed] }
+                resumeUrl: { type: string }
+                marketingConsent: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/UserMe' } }
+  /users/me/avatar-upload-url:
+    post:
+      tags: [Users]
+      summary: Get presigned Bunny Storage upload URL for avatar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, contentType]
+              properties:
+                fileName: { type: string }
+                contentType: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/UploadUrlResponse' }
+  /users/me/notification-preferences:
+    get:
+      tags: [Users]
+      summary: Own notification preferences
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/NotificationPreference' } }
+    put:
+      tags: [Users]
+      summary: Replace preferences (transactional cannot be disabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: '#/components/schemas/NotificationPreference' }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /users/me/device-tokens:
+    post:
+      tags: [Users]
+      summary: Register FCM device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: { type: string }
+                platform: { type: string, enum: [android, ios, web] }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+  # ============================================================ INSTRUCTOR ONBOARDING
+  /users/instructor-application:
+    get:
+      tags: [Instructor]
+      summary: Own instructor application/profile (any state)
+      x-required-roles: [student, instructor]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/InstructorProfile' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Instructor]
+      summary: Apply as external instructor (KYC submitted; re-apply allowed after rejection)
+      x-required-roles: [student]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstructorApplication'
+      responses:
+        '201':
+          description: Submitted (PAN/bank stored encrypted; only last4 ever returned)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/InstructorProfile' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /instructor/agreement/accept:
+    post:
+      tags: [Instructor]
+      summary: Record agreement acceptance (required before submit-for-review)
+      x-required-roles: [instructor]
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+  # ============================================================ CATALOG (PUBLIC)
+  /catalog/internships:
+    get:
+      tags: [Catalog]
+      summary: 'Public: browse published internships'
+      security: []
+      parameters:
+        - { name: category, in: query, schema: { type: string }, description: Category slug }
+        - { name: pricingType, in: query, schema: { type: string, enum: [free, paid, stipend] } }
+        - { name: deliveryMode, in: query, schema: { type: string, enum: [recorded, live, hybrid, project_only] } }
+        - { name: language, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string }, description: Free-text title search }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, price_asc, price_desc], default: newest } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/InternshipSummary' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /catalog/internships/{slug}:
+    get:
+      tags: [Catalog]
+      summary: 'Public: internship detail (outline only; preview lessons playable)'
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/InternshipDetail' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /catalog/categories:
+    get:
+      tags: [Catalog]
+      summary: 'Public: active categories'
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Category' } }
+  /catalog/banners:
+    get:
+      tags: [Catalog]
+      summary: 'Public: live banners by placement'
+      security: []
+      parameters:
+        - { name: placement, in: query, schema: { type: string, enum: [home_hero, home_strip, category_page] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Banner' } }
+  /catalog/pages/{slug}:
+    get:
+      tags: [Catalog]
+      summary: 'Public: published CMS page'
+      security: []
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/CmsPage' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================================================ INTERNSHIP AUTHORING
+  /internships:
+    get:
+      tags: [Internships]
+      summary: List own internships (any status)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending_review, published, rejected, archived] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Internship' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Internships]
+      summary: Create internship draft
+      x-required-roles: [instructor, moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InternshipCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Internship' } }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /internships/{internshipId}:
+    parameters:
+      - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Internships]
+      summary: Own internship detail incl. full curriculum
+      x-required-roles: [instructor, moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Internship' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Internships]
+      summary: Update own internship (drafts freely; published = safe fields only)
+      x-required-roles: [instructor, moderator, super_admin]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InternshipCreate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Internship' } }
+  /internships/{internshipId}/submit-for-review:
+    post:
+      tags: [Internships]
+      summary: draft → pending_review (requires signed agreement, ≥1 lesson, ≥1 task)
+      x-required-roles: [instructor]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /internships/{internshipId}/archive:
+    post:
+      tags: [Internships]
+      summary: Archive (hidden from catalog; learners keep access)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /internships/{internshipId}/sections:
+    post:
+      tags: [Internships]
+      summary: Add curriculum section
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                displayOrder: { type: integer }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Section' } }
+  /internships/{internshipId}/sections/reorder:
+    put:
+      tags: [Internships]
+      summary: Reorder sections (array of sectionIds in new order)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sectionIds]
+              properties:
+                sectionIds: { type: array, items: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /sections/{sectionId}:
+    patch:
+      tags: [Internships]
+      summary: Update section title/order
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: sectionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                displayOrder: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+    delete:
+      tags: [Internships]
+      summary: Delete empty section (409 if it has lessons)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: sectionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /sections/{sectionId}/lessons:
+    post:
+      tags: [Internships]
+      summary: Add lesson (video|live|document|quiz)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: sectionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, type]
+              properties:
+                title: { type: string }
+                type: { type: string, enum: [video, live, document, quiz] }
+                documentUrl: { type: string }
+                quizId: { type: integer, format: int64 }
+                isPreview: { type: boolean, default: false }
+                isMandatory: { type: boolean, default: true }
+                displayOrder: { type: integer }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Lesson' } }
+  /lessons/{lessonId}:
+    patch:
+      tags: [Internships]
+      summary: Update lesson
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                documentUrl: { type: string }
+                isPreview: { type: boolean }
+                isMandatory: { type: boolean }
+                displayOrder: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+    delete:
+      tags: [Internships]
+      summary: Delete lesson (409 if learner progress exists — archive instead)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /lessons/{lessonId}/video-upload:
+    post:
+      tags: [Internships]
+      summary: Create Bunny Stream video + return TUS upload credentials
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Upload target
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          bunnyVideoId: { type: string }
+                          tusEndpoint: { type: string }
+                          authorizationSignature: { type: string }
+                          authorizationExpire: { type: integer }
+                          libraryId: { type: string }
+
+  # ============================================================ BATCHES
+  /internships/{internshipId}/batches:
+    parameters:
+      - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Batches]
+      summary: List batches of an internship
+      x-required-roles: [instructor, moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Batch' } }
+    post:
+      tags: [Batches]
+      summary: Create batch
+      x-required-roles: [instructor, moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BatchCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Batch' } }
+  /batches/{batchId}:
+    patch:
+      tags: [Batches]
+      summary: Update batch (seats, dates, status)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BatchCreate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Batch' } }
+  /batches/{batchId}/students:
+    get:
+      tags: [Batches]
+      summary: Enrolled students with progress & attendance % (own batches)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            enrollmentId: { type: integer, format: int64 }
+                            studentName: { type: string }
+                            progressPercent: { type: number }
+                            attendancePercent: { type: number }
+                            status: { type: string }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+  # ============================================================ ENROLLMENTS
+  /enrollments:
+    post:
+      tags: [Enrollments]
+      summary: Enroll in a FREE internship (paid goes via /orders)
+      x-required-roles: [student]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [internshipId]
+              properties:
+                internshipId: { type: integer, format: int64 }
+                batchId: { type: integer, format: int64 }
+      responses:
+        '201':
+          description: Enrolled (or waitlisted when batch full + waitlist on)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Enrollment' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /enrollments/me:
+    get:
+      tags: [Enrollments]
+      summary: My enrollments
+      x-required-roles: [student]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending_payment, waitlisted, active, completed, dropped, suspended] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Enrollment' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /enrollments/{enrollmentId}:
+    get:
+      tags: [Enrollments]
+      summary: Enrollment detail (owner only)
+      x-required-roles: [student]
+      parameters:
+        - { name: enrollmentId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Enrollment' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /enrollments/{enrollmentId}/curriculum:
+    get:
+      tags: [Enrollments]
+      summary: Full curriculum with per-lesson progress (owner only)
+      x-required-roles: [student]
+      parameters:
+        - { name: enrollmentId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          sections: { type: array, items: { $ref: '#/components/schemas/Section' } }
+                          progress: { type: array, items: { $ref: '#/components/schemas/LessonProgress' } }
+                          progressPercent: { type: number }
+  /enrollments/{enrollmentId}/tasks:
+    get:
+      tags: [Enrollments]
+      summary: Project tasks with my submission state per task
+      x-required-roles: [student]
+      parameters:
+        - { name: enrollmentId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            task: { $ref: '#/components/schemas/ProjectTask' }
+                            latestSubmission: { oneOf: [{ $ref: '#/components/schemas/Submission' }, { type: 'null' }] }
+  /enrollments/{enrollmentId}/drop:
+    post:
+      tags: [Enrollments]
+      summary: Drop out (releases seat; refund per policy is separate)
+      x-required-roles: [student]
+      parameters:
+        - { name: enrollmentId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /enrollments/{enrollmentId}/certificate:
+    post:
+      tags: [Certificates]
+      summary: Claim certificate (evaluates certificate_rules; 409 NOT_ELIGIBLE with failed checks)
+      x-required-roles: [student]
+      parameters:
+        - { name: enrollmentId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '201':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Certificate' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ============================================================ LEARNING
+  /lessons/{lessonId}/play:
+    get:
+      tags: [Learning]
+      summary: Signed Bunny Stream playback URL (active enrollment or preview lesson)
+      x-required-roles: [student]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: enrollmentId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Signed playback
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          playbackUrl: { type: string }
+                          expiresAt: { type: string, format: date-time }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /lessons/{lessonId}/progress:
+    post:
+      tags: [Learning]
+      summary: Report watch progress / completion (recomputes enrollment %)
+      x-required-roles: [student]
+      parameters:
+        - { name: lessonId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentId]
+              properties:
+                enrollmentId: { type: integer, format: int64 }
+                watchedSeconds: { type: integer, minimum: 0 }
+                completed: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          lessonProgress: { $ref: '#/components/schemas/LessonProgress' }
+                          progressPercent: { type: number }
+
+  # ============================================================ LIVE SESSIONS
+  /batches/{batchId}/live-sessions:
+    parameters:
+      - { name: batchId, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Live Sessions]
+      summary: Sessions of a batch (instructor or enrolled student)
+      x-required-roles: [student, instructor, moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/LiveSession' } }
+    post:
+      tags: [Live Sessions]
+      summary: Schedule session (instructor pastes Zoom/Meet link in v1)
+      x-required-roles: [instructor, moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, title, joinUrl, scheduledStart, scheduledEnd]
+              properties:
+                provider: { type: string, enum: [zoom, google_meet] }
+                title: { type: string }
+                joinUrl: { type: string }
+                meetingId: { type: string }
+                passcode: { type: string }
+                lessonId: { type: integer, format: int64 }
+                scheduledStart: { type: string, format: date-time }
+                scheduledEnd: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/LiveSession' } }
+  /live-sessions/{liveSessionId}:
+    patch:
+      tags: [Live Sessions]
+      summary: Update/cancel session or attach recordingLessonId
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: liveSessionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                joinUrl: { type: string }
+                scheduledStart: { type: string, format: date-time }
+                scheduledEnd: { type: string, format: date-time }
+                status: { type: string, enum: [scheduled, live, completed, cancelled] }
+                recordingLessonId: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/LiveSession' } }
+  /live-sessions/{liveSessionId}/join:
+    get:
+      tags: [Live Sessions]
+      summary: Get join URL (window start−15m..end); records attendance present
+      x-required-roles: [student]
+      parameters:
+        - { name: liveSessionId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: enrollmentId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Join info
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          joinUrl: { type: string }
+                          passcode: { type: [string, 'null'] }
+        '409': { description: 'TOO_EARLY or SESSION_ENDED', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /live-sessions/{liveSessionId}/attendance:
+    get:
+      tags: [Live Sessions]
+      summary: Attendance list for a session
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: liveSessionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            enrollmentId: { type: integer, format: int64 }
+                            studentName: { type: string }
+                            status: { type: string, enum: [present, late, absent] }
+                            joinedAt: { type: [string, 'null'], format: date-time }
+    post:
+      tags: [Live Sessions]
+      summary: Manually mark/override attendance (bulk)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: liveSessionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [records]
+              properties:
+                records:
+                  type: array
+                  items:
+                    type: object
+                    required: [enrollmentId, status]
+                    properties:
+                      enrollmentId: { type: integer, format: int64 }
+                      status: { type: string, enum: [present, late, absent] }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+  # ============================================================ COMMERCE
+  /orders:
+    post:
+      tags: [Commerce]
+      summary: Create order for a PAID internship (server computes GST; returns Razorpay checkout params) — WEB ONLY
+      x-required-roles: [student]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderCreate' }
+      responses:
+        '201':
+          description: Order + checkout params
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/CheckoutParams' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /orders/me:
+    get:
+      tags: [Commerce]
+      summary: My orders
+      x-required-roles: [student]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /orders/{orderId}:
+    get:
+      tags: [Commerce]
+      summary: Order detail (owner only)
+      x-required-roles: [student]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Order' } }
+  /orders/{orderId}/invoice:
+    get:
+      tags: [Commerce]
+      summary: Signed URL for GST invoice PDF
+      x-required-roles: [student]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/UploadUrlResponse' }
+  /orders/{orderId}/refund-request:
+    post:
+      tags: [Commerce]
+      summary: Request refund (goes to finance queue)
+      x-required-roles: [student]
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 10 }
+      responses:
+        '201':
+          description: Requested
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Refund' } }
+  /coupons/validate:
+    post:
+      tags: [Commerce]
+      summary: Preview coupon discount for an internship
+      x-required-roles: [student]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, internshipId]
+              properties:
+                code: { type: string }
+                internshipId: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Validation result (valid=false carries reason, still 200)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/CouponValidation' } }
+  /payments/razorpay/webhook:
+    post:
+      tags: [Commerce]
+      summary: 'Public: Razorpay webhook (HMAC-verified, idempotent). Events: payment.captured, payment.failed, refund.processed'
+      security: []
+      parameters:
+        - { name: X-Razorpay-Signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Raw Razorpay event payload }
+      responses:
+        '200': { description: 'Acknowledged (always 200 for valid signatures, even on no-op replays)' }
+        '401': { description: Bad signature }
+
+  # ============================================================ PROJECTS & SUBMISSIONS
+  /internships/{internshipId}/projects:
+    parameters:
+      - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Projects & Submissions]
+      summary: Projects with tasks (instructor view)
+      x-required-roles: [instructor, moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Project' } }
+    post:
+      tags: [Projects & Submissions]
+      summary: Create project
+      x-required-roles: [instructor, moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Project' } }
+  /projects/{projectId}/tasks:
+    post:
+      tags: [Projects & Submissions]
+      summary: Add weekly task (rubric JSON, allowed submission types)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [weekNumber, title]
+              properties:
+                weekNumber: { type: integer, minimum: 1 }
+                title: { type: string }
+                instructions: { type: string }
+                allowedSubmissionTypes: { type: array, items: { type: string, enum: [file, github_url, live_url] } }
+                maxScore: { type: number, default: 100 }
+                rubric: { type: array, items: { type: object, properties: { criterion: { type: string }, weight: { type: number }, maxPoints: { type: number } } } }
+                dueOffsetDays: { type: integer, minimum: 0 }
+                isMandatory: { type: boolean, default: true }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/ProjectTask' } }
+  /tasks/{taskId}:
+    patch:
+      tags: [Projects & Submissions]
+      summary: Update task
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+    delete:
+      tags: [Projects & Submissions]
+      summary: Delete task (409 if submissions exist)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tasks/{taskId}/submission-upload-url:
+    post:
+      tags: [Projects & Submissions]
+      summary: Presigned Bunny Storage upload for file submissions (≤50 MB)
+      x-required-roles: [student]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentId, fileName, contentType]
+              properties:
+                enrollmentId: { type: integer, format: int64 }
+                fileName: { type: string }
+                contentType: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/UploadUrlResponse' }
+  /tasks/{taskId}/submissions:
+    post:
+      tags: [Projects & Submissions]
+      summary: Submit work (new version; 409 if a version is pending review)
+      x-required-roles: [student]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentId, submissionType]
+              properties:
+                enrollmentId: { type: integer, format: int64 }
+                submissionType: { type: string, enum: [file, github_url, live_url] }
+                fileUrl: { type: string, description: Bunny path from presigned upload }
+                urlValue: { type: string }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Submission' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /tasks/{taskId}/submissions/me:
+    get:
+      tags: [Projects & Submissions]
+      summary: My submission history for a task (all versions)
+      x-required-roles: [student]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: enrollmentId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Submission' } }
+  /instructor/review-queue:
+    get:
+      tags: [Projects & Submissions]
+      summary: Pending submissions across own internships (oldest first)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Submission' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /submissions/{submissionId}/review:
+    post:
+      tags: [Projects & Submissions]
+      summary: Review a submission (rubric scores; feedback required unless approved)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: submissionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, rubricScores]
+              properties:
+                decision: { type: string, enum: [approved, changes_requested, rejected] }
+                rubricScores: { type: array, items: { type: object, required: [criterion, points], properties: { criterion: { type: string }, points: { type: number } } } }
+                feedback: { type: string }
+      responses:
+        '201':
+          description: Reviewed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/SubmissionReview' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ============================================================ QUIZZES
+  /internships/{internshipId}/quizzes:
+    post:
+      tags: [Quizzes]
+      summary: Create quiz
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                passPercent: { type: number, default: 60 }
+                timeLimitMinutes: { type: integer }
+                maxAttempts: { type: integer, default: 3 }
+                shuffleQuestions: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Quiz' } }
+  /quizzes/{quizId}:
+    get:
+      tags: [Quizzes]
+      summary: Quiz meta for enrolled student (no answers)
+      x-required-roles: [student]
+      parameters:
+        - { name: quizId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: enrollmentId, in: query, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Quiz' } }
+    patch:
+      tags: [Quizzes]
+      summary: Update quiz settings / publish
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: quizId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                passPercent: { type: number }
+                timeLimitMinutes: { type: integer }
+                maxAttempts: { type: integer }
+                shuffleQuestions: { type: boolean }
+                isPublished: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /quizzes/{quizId}/questions:
+    post:
+      tags: [Quizzes]
+      summary: Add question
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: quizId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuizQuestionCreate' }
+      responses:
+        '201': { $ref: '#/components/responses/OkMessage' }
+  /questions/{questionId}:
+    patch:
+      tags: [Quizzes]
+      summary: Update question
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: questionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuizQuestionCreate' }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+    delete:
+      tags: [Quizzes]
+      summary: Delete question (409 if attempts exist)
+      x-required-roles: [instructor, moderator, super_admin]
+      parameters:
+        - { name: questionId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /quizzes/{quizId}/attempts:
+    post:
+      tags: [Quizzes]
+      summary: Start attempt (409 ATTEMPTS_EXHAUSTED when maxed)
+      x-required-roles: [student]
+      parameters:
+        - { name: quizId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enrollmentId]
+              properties:
+                enrollmentId: { type: integer, format: int64 }
+      responses:
+        '201':
+          description: Attempt started with questions (shuffled if configured)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/QuizAttempt' } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /attempts/{attemptId}/answers:
+    put:
+      tags: [Quizzes]
+      summary: Autosave answers map {questionId:[optionIds]}
+      x-required-roles: [student]
+      parameters:
+        - { name: attemptId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers: { type: object, additionalProperties: { type: array, items: { type: string } } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+        '410': { description: 'Attempt expired (auto-submitted)', content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /attempts/{attemptId}/submit:
+    post:
+      tags: [Quizzes]
+      summary: Submit attempt — server-side scoring
+      x-required-roles: [student]
+      parameters:
+        - { name: attemptId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: Scored
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/AttemptResult' } }
+  /attempts/{attemptId}/result:
+    get:
+      tags: [Quizzes]
+      summary: Result with per-question correctness & explanations
+      x-required-roles: [student]
+      parameters:
+        - { name: attemptId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/AttemptResult' } }
+
+  # ============================================================ CERTIFICATES
+  /certificates/me:
+    get:
+      tags: [Certificates]
+      summary: My certificates
+      x-required-roles: [student]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Certificate' } }
+  /certificates/{certificateId}/download:
+    get:
+      tags: [Certificates]
+      summary: Signed URL for certificate PDF (owner only)
+      x-required-roles: [student]
+      parameters:
+        - { name: certificateId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/UploadUrlResponse' }
+  /verify/{certificateNo}:
+    get:
+      tags: [Certificates]
+      summary: 'Public: verify a certificate by number (rate-limited)'
+      security: []
+      parameters:
+        - { name: certificateNo, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Verification result (valid=false for unknown numbers, still 200)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/CertificateVerification' } }
+
+  # ============================================================ NOTIFICATIONS
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: In-app feed with unread count in meta
+      parameters:
+        - { name: unreadOnly, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/PaginationMeta'
+                          - properties: { unreadCount: { type: integer } }
+  /notifications/{notificationId}/read:
+    post:
+      tags: [Notifications]
+      summary: Mark one read
+      parameters:
+        - { name: notificationId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all read
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+  # ============================================================ INSTRUCTOR FINANCE
+  /instructor/earnings:
+    get:
+      tags: [Instructor Finance]
+      summary: Earnings ledger (own)
+      x-required-roles: [instructor]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, available, settled, reversed] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Earning' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /instructor/earnings/summary:
+    get:
+      tags: [Instructor Finance]
+      summary: Totals by status
+      x-required-roles: [instructor]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/EarningsSummary' } }
+  /instructor/payouts:
+    get:
+      tags: [Instructor Finance]
+      summary: Settlement history (own)
+      x-required-roles: [instructor]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Settlement' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /instructor/payouts/{settlementId}:
+    get:
+      tags: [Instructor Finance]
+      summary: Settlement detail with included earnings
+      x-required-roles: [instructor]
+      parameters:
+        - { name: settlementId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Settlement'
+                          - properties: { earnings: { type: array, items: { $ref: '#/components/schemas/Earning' } } }
+
+  # ============================================================ SUPPORT
+  /tickets:
+    post:
+      tags: [Support]
+      summary: Raise a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, subject, description]
+              properties:
+                category: { type: string, enum: [payment, content, technical, certificate, other] }
+                subject: { type: string }
+                description: { type: string }
+                internshipId: { type: integer, format: int64 }
+                attachments: { type: array, items: { type: string } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Ticket' } }
+  /tickets/me:
+    get:
+      tags: [Support]
+      summary: My tickets
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Ticket' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /tickets/{ticketId}:
+    get:
+      tags: [Support]
+      summary: Ticket detail (owner only)
+      parameters:
+        - { name: ticketId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Ticket' } }
+
+  # ============================================================ ADMIN
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: KPI counters (enrollments, revenue, pending queues)
+      x-required-roles: [moderator, finance_admin, support, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          activeLearners: { type: integer }
+                          enrollmentsToday: { type: integer }
+                          revenueThisMonth: { type: number }
+                          pendingKyc: { type: integer }
+                          pendingInternshipReviews: { type: integer }
+                          pendingRefunds: { type: integer }
+                          openTickets: { type: integer }
+  /admin/instructors:
+    get:
+      tags: [Admin]
+      summary: Instructor profiles (filter kycStatus)
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: kycStatus, in: query, schema: { type: string, enum: [pending, submitted, approved, rejected] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/InstructorProfile' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/instructors/{profileId}/kyc-decision:
+    post:
+      tags: [Admin]
+      summary: Approve/reject KYC (approval grants instructor role, sets share %)
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: profileId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                reason: { type: string, description: Required when rejected }
+                revenueSharePercent: { type: number, minimum: 0, maximum: 100 }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/internships:
+    get:
+      tags: [Admin]
+      summary: All internships (filter status; review queue = pending_review)
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [draft, pending_review, published, rejected, archived] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Internship' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/internships/{internshipId}/decision:
+    post:
+      tags: [Admin]
+      summary: Publish/reject a pending internship
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: internshipId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [published, rejected] }
+                reason: { type: string, description: Required when rejected }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Search users (q = name/email/phone)
+      x-required-roles: [moderator, support, super_admin]
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [active, suspended, deleted, pending_verification] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/UserMe' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/users/{userId}/status:
+    patch:
+      tags: [Admin]
+      summary: Suspend/reactivate user
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, suspended] }
+                reason: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/users/{userId}/roles:
+    post:
+      tags: [Admin]
+      summary: Grant role (super_admin only)
+      x-required-roles: [super_admin]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [student, instructor, moderator, finance_admin, support, super_admin] }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/users/{userId}/roles/{role}:
+    delete:
+      tags: [Admin]
+      summary: Revoke role (super_admin only)
+      x-required-roles: [super_admin]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: integer, format: int64 } }
+        - { name: role, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/orders:
+    get:
+      tags: [Admin]
+      summary: All orders (filter status, date range, internship)
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: internshipId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Order' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/refunds:
+    get:
+      tags: [Admin]
+      summary: Refund queue (default status=requested)
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [requested, approved, rejected, processed] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Refund' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/refunds/{refundId}/decision:
+    post:
+      tags: [Admin]
+      summary: Approve (triggers Razorpay refund) or reject
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: refundId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                reason: { type: string, description: Required when rejected }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/coupons:
+    get:
+      tags: [Admin]
+      summary: List coupons
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { type: object } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Admin]
+      summary: Create coupon
+      x-required-roles: [finance_admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, discountType, discountValue]
+              properties:
+                code: { type: string, description: Stored uppercase }
+                description: { type: string }
+                discountType: { type: string, enum: [percent, flat] }
+                discountValue: { type: number, minimum: 0 }
+                maxDiscountAmount: { type: number }
+                internshipId: { type: integer, format: int64, description: Omit for global }
+                validFrom: { type: string, format: date-time }
+                validUntil: { type: string, format: date-time }
+                maxRedemptions: { type: integer }
+                perUserLimit: { type: integer, default: 1 }
+                minOrderAmount: { type: number, default: 0 }
+      responses:
+        '201': { $ref: '#/components/responses/OkMessage' }
+  /admin/coupons/{couponId}:
+    patch:
+      tags: [Admin]
+      summary: Update/deactivate coupon
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: couponId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/earnings:
+    get:
+      tags: [Admin]
+      summary: All instructor earnings (filter instructor, status)
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: instructorProfileId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, available, settled, reversed] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Earning' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/settlements:
+    get:
+      tags: [Admin]
+      summary: All settlements
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [initiated, processing, completed, failed] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Settlement' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+    post:
+      tags: [Admin]
+      summary: Create settlement run for an instructor's available earnings in a period
+      x-required-roles: [finance_admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instructorProfileId, periodStart, periodEnd]
+              properties:
+                instructorProfileId: { type: integer, format: int64 }
+                periodStart: { type: string, format: date }
+                periodEnd: { type: string, format: date }
+                tdsAmount: { type: number, default: 0 }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Created with linked earnings frozen
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties: { data: { $ref: '#/components/schemas/Settlement' } }
+  /admin/settlements/{settlementId}:
+    patch:
+      tags: [Admin]
+      summary: Mark processing/completed/failed; record UTR
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: settlementId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [processing, completed, failed] }
+                utrNumber: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/reports/revenue:
+    get:
+      tags: [Admin]
+      summary: Revenue by period/internship incl. GST summary (json or csv)
+      x-required-roles: [finance_admin, super_admin]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: groupBy, in: query, schema: { type: string, enum: [day, month, internship], default: month } }
+        - { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } }
+      responses:
+        '200': { description: Report rows (envelope for json; text/csv attachment for csv) }
+  /admin/reports/enrollments:
+    get:
+      tags: [Admin]
+      summary: Enrollment funnel & completion rates
+      x-required-roles: [moderator, finance_admin, super_admin]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: internshipId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { description: Report rows in envelope }
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Search audit trail
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: actorId, in: query, schema: { type: integer, format: int64 } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: entityType, in: query, schema: { type: string } }
+        - { name: entityId, in: query, schema: { type: integer, format: int64 } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/AuditLog' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/tickets:
+    get:
+      tags: [Admin]
+      summary: Support queue (filter status/priority/category)
+      x-required-roles: [support, moderator, finance_admin, super_admin]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, in_progress, resolved, closed] } }
+        - { name: priority, in: query, schema: { type: string, enum: [low, medium, high, urgent] } }
+        - { name: category, in: query, schema: { type: string, enum: [payment, content, technical, certificate, other] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Ticket' } }
+                      meta: { $ref: '#/components/schemas/PaginationMeta' }
+  /admin/tickets/{ticketId}:
+    patch:
+      tags: [Admin]
+      summary: Assign / set priority / resolve with note
+      x-required-roles: [support, moderator, finance_admin, super_admin]
+      parameters:
+        - { name: ticketId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [open, in_progress, resolved, closed] }
+                priority: { type: string, enum: [low, medium, high, urgent] }
+                assignedTo: { type: integer, format: int64 }
+                resolutionNote: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/certificates/{certificateId}/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke certificate with reason (audited)
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: certificateId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/cms/banners:
+    get:
+      tags: [Admin]
+      summary: All banners
+      x-required-roles: [moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Banner' } }
+    post:
+      tags: [Admin]
+      summary: Create banner
+      x-required-roles: [moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, imageUrl, placement]
+              properties:
+                title: { type: string }
+                imageUrl: { type: string }
+                linkUrl: { type: string }
+                placement: { type: string, enum: [home_hero, home_strip, category_page] }
+                displayOrder: { type: integer }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+      responses:
+        '201': { $ref: '#/components/responses/OkMessage' }
+  /admin/cms/banners/{bannerId}:
+    patch:
+      tags: [Admin]
+      summary: Update/deactivate banner
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: bannerId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+    delete:
+      tags: [Admin]
+      summary: Delete banner
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: bannerId, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+  /admin/cms/pages:
+    get:
+      tags: [Admin]
+      summary: All CMS pages
+      x-required-roles: [moderator, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/CmsPage' } }
+    post:
+      tags: [Admin]
+      summary: Create page
+      x-required-roles: [moderator, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, title, contentMd]
+              properties:
+                slug: { type: string }
+                title: { type: string }
+                contentMd: { type: string }
+                metaTitle: { type: string }
+                metaDescription: { type: string }
+                isPublished: { type: boolean, default: false }
+      responses:
+        '201': { $ref: '#/components/responses/OkMessage' }
+  /admin/cms/pages/{pageId}:
+    patch:
+      tags: [Admin]
+      summary: Update/publish page
+      x-required-roles: [moderator, super_admin]
+      parameters:
+        - { name: pageId, in: path, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { $ref: '#/components/responses/OkMessage' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    OkMessage:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data:
+                    type: object
+                    properties: { message: { type: string } }
+    AuthTokensResponse:
+      description: Tokens issued
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties: { data: { $ref: '#/components/schemas/AuthTokens' } }
+    UploadUrlResponse:
+      description: Presigned upload target
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data:
+                    type: object
+                    properties:
+                      uploadUrl: { type: string }
+                      publicUrl: { type: string }
+                      headers: { type: object, additionalProperties: { type: string } }
+                      expiresAt: { type: string, format: date-time }
+    ValidationError:
+      description: 'Request failed zod validation (error.code=VALIDATION_ERROR)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: 'Missing/invalid token (error.code=UNAUTHORIZED)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: 'Role/ownership check failed (error.code=FORBIDDEN)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: 'Resource not found (error.code=NOT_FOUND)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: 'State conflict, e.g. ALREADY_ENROLLED, BATCH_FULL, SUBMISSION_PENDING_REVIEW'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    RateLimited:
+      description: 'Too many requests (error.code=RATE_LIMITED)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    Envelope:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+        error: { type: 'null' }
+        meta: { type: object }
+    ErrorEnvelope:
+      type: object
+      required: [success, data, error]
+      properties:
+        success: { type: boolean, const: false }
+        data: { type: 'null' }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, description: 'Stable machine code, e.g. VALIDATION_ERROR, FORBIDDEN, BATCH_FULL' }
+            message: { type: string }
+            details: { description: Optional zod issue list }
+    PaginationMeta:
+      type: object
+      properties:
+        pagination:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+    AuthTokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: Access token TTL seconds }
+        user: { $ref: '#/components/schemas/UserMe' }
+    UserMe:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        fullName: { type: string }
+        avatarUrl: { type: [string, 'null'] }
+        status: { type: string, enum: [active, suspended, deleted, pending_verification] }
+        emailVerified: { type: boolean }
+        phoneVerified: { type: boolean }
+        track: { type: [string, 'null'], enum: [education, employed, null] }
+        resumeUrl: { type: [string, 'null'] }
+        roles: { type: array, items: { type: string, enum: [student, instructor, moderator, finance_admin, support, super_admin] } }
+        createdAt: { type: string, format: date-time }
+    InstructorApplication:
+      type: object
+      required: [bio, expertise, panNumber, bankAccountName, bankAccountNumber, bankIfsc]
+      properties:
+        bio: { type: string }
+        expertise: { type: array, items: { type: string } }
+        linkedinUrl: { type: string }
+        websiteUrl: { type: string }
+        panNumber: { type: string, description: Encrypted at rest }
+        gstin: { type: [string, 'null'] }
+        bankAccountName: { type: string }
+        bankAccountNumber: { type: string, description: Encrypted at rest; only last4 ever returned }
+        bankIfsc: { type: string }
+        kycDocuments: { type: array, items: { type: object, properties: { type: { type: string }, bunnyPath: { type: string } } } }
+    InstructorProfile:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        userId: { type: integer, format: int64 }
+        instructorType: { type: string, enum: [internal, external] }
+        bio: { type: [string, 'null'] }
+        expertise: { type: array, items: { type: string } }
+        kycStatus: { type: string, enum: [pending, submitted, approved, rejected] }
+        agreementStatus: { type: string, enum: [pending, sent, signed] }
+        revenueSharePercent: { type: number }
+        bankAccountLast4: { type: [string, 'null'] }
+        rejectionReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    Category:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        slug: { type: string }
+        iconUrl: { type: [string, 'null'] }
+        displayOrder: { type: integer }
+    InternshipSummary:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        slug: { type: string }
+        shortDescription: { type: [string, 'null'] }
+        category: { $ref: '#/components/schemas/Category' }
+        pricingType: { type: string, enum: [free, paid, stipend] }
+        price: { type: number }
+        currency: { type: string }
+        deliveryMode: { type: string, enum: [recorded, live, hybrid, project_only] }
+        paceType: { type: string, enum: [batch, self_paced] }
+        durationWeeks: { type: [integer, 'null'] }
+        languages: { type: array, items: { type: string } }
+        thumbnailUrl: { type: [string, 'null'] }
+        instructorName: { type: string }
+        publishedAt: { type: [string, 'null'], format: date-time }
+    InternshipDetail:
+      allOf:
+        - $ref: '#/components/schemas/InternshipSummary'
+        - type: object
+          properties:
+            description: { type: [string, 'null'] }
+            outcomes: { type: array, items: { type: string } }
+            prerequisites: { type: array, items: { type: string } }
+            gstRate: { type: number }
+            totalWithGst: { type: number, description: Server-computed display price }
+            certificateRules: { type: object }
+            curriculum:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: integer, format: int64 }
+                  title: { type: string }
+                  lessons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, format: int64 }
+                        title: { type: string }
+                        type: { type: string, enum: [video, live, document, quiz] }
+                        durationMinutes: { type: [integer, 'null'] }
+                        isPreview: { type: boolean }
+            upcomingBatches: { type: array, items: { $ref: '#/components/schemas/Batch' } }
+            instructor: { type: object, properties: { name: { type: string }, bio: { type: [string, 'null'] }, expertise: { type: array, items: { type: string } } } }
+    InternshipCreate:
+      type: object
+      required: [title, categoryId, pricingType, deliveryMode, paceType]
+      properties:
+        title: { type: string, minLength: 5 }
+        categoryId: { type: integer, format: int64 }
+        shortDescription: { type: string }
+        description: { type: string }
+        outcomes: { type: array, items: { type: string } }
+        prerequisites: { type: array, items: { type: string } }
+        languages: { type: array, items: { type: string } }
+        pricingType: { type: string, enum: [free, paid] , description: stipend reserved for P2 }
+        price: { type: number, minimum: 0 }
+        deliveryMode: { type: string, enum: [recorded, live, hybrid, project_only] }
+        paceType: { type: string, enum: [batch, self_paced] }
+        durationWeeks: { type: integer, minimum: 1 }
+        thumbnailUrl: { type: string }
+        certificateRules: { type: object }
+    Internship:
+      allOf:
+        - $ref: '#/components/schemas/InternshipSummary'
+        - type: object
+          properties:
+            status: { type: string, enum: [draft, pending_review, published, rejected, archived] }
+            providerType: { type: string, enum: [system, external] }
+            rejectionReason: { type: [string, 'null'] }
+            certificateRules: { type: object }
+            createdAt: { type: string, format: date-time }
+    Batch:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internshipId: { type: integer, format: int64 }
+        name: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        enrollmentDeadline: { type: [string, 'null'], format: date-time }
+        seatsTotal: { type: integer }
+        seatsFilled: { type: integer }
+        seatsLeft: { type: integer }
+        waitlistEnabled: { type: boolean }
+        status: { type: string, enum: [scheduled, enrolling, ongoing, completed, cancelled] }
+    BatchCreate:
+      type: object
+      required: [name, startDate, endDate, seatsTotal]
+      properties:
+        name: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        enrollmentDeadline: { type: string, format: date-time }
+        seatsTotal: { type: integer, minimum: 1 }
+        waitlistEnabled: { type: boolean, default: false }
+        waitlistLimit: { type: integer, minimum: 1 }
+    Section:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internshipId: { type: integer, format: int64 }
+        title: { type: string }
+        displayOrder: { type: integer }
+        lessons: { type: array, items: { $ref: '#/components/schemas/Lesson' } }
+    Lesson:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        sectionId: { type: integer, format: int64 }
+        title: { type: string }
+        type: { type: string, enum: [video, live, document, quiz] }
+        displayOrder: { type: integer }
+        durationMinutes: { type: [integer, 'null'] }
+        videoStatus: { type: [string, 'null'], enum: [uploading, processing, ready, failed, null] }
+        documentUrl: { type: [string, 'null'] }
+        quizId: { type: [integer, 'null'], format: int64 }
+        isPreview: { type: boolean }
+        isMandatory: { type: boolean }
+    LiveSession:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internshipId: { type: integer, format: int64 }
+        batchId: { type: [integer, 'null'], format: int64 }
+        lessonId: { type: [integer, 'null'], format: int64 }
+        provider: { type: string, enum: [zoom, google_meet] }
+        title: { type: string }
+        scheduledStart: { type: string, format: date-time }
+        scheduledEnd: { type: string, format: date-time }
+        status: { type: string, enum: [scheduled, live, completed, cancelled] }
+        recordingLessonId: { type: [integer, 'null'], format: int64 }
+    Enrollment:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internship: { $ref: '#/components/schemas/InternshipSummary' }
+        batch: { oneOf: [{ $ref: '#/components/schemas/Batch' }, { type: 'null' }] }
+        status: { type: string, enum: [pending_payment, waitlisted, active, completed, dropped, suspended] }
+        progressPercent: { type: number }
+        waitlistPosition: { type: [integer, 'null'] }
+        enrolledAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        certificateId: { type: [integer, 'null'], format: int64 }
+    LessonProgress:
+      type: object
+      properties:
+        lessonId: { type: integer, format: int64 }
+        status: { type: string, enum: [not_started, in_progress, completed] }
+        watchedSeconds: { type: integer }
+        completedAt: { type: [string, 'null'], format: date-time }
+    Order:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        orderNo: { type: string }
+        internshipId: { type: integer, format: int64 }
+        batchId: { type: [integer, 'null'], format: int64 }
+        subtotal: { type: number }
+        discountAmount: { type: number }
+        taxableAmount: { type: number }
+        gstRate: { type: number }
+        gstAmount: { type: number }
+        totalAmount: { type: number }
+        currency: { type: string }
+        status: { type: string, enum: [created, pending, paid, failed, refunded, cancelled] }
+        razorpayOrderId: { type: [string, 'null'] }
+        invoiceNo: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    OrderCreate:
+      type: object
+      required: [internshipId, billingName, billingEmail, billingPhone, billingState]
+      properties:
+        internshipId: { type: integer, format: int64 }
+        batchId: { type: integer, format: int64 }
+        couponCode: { type: string }
+        billingName: { type: string }
+        billingEmail: { type: string, format: email }
+        billingPhone: { type: string }
+        billingState: { type: string, description: GST place of supply }
+        billingGstin: { type: string }
+    CheckoutParams:
+      type: object
+      description: Params for Razorpay Checkout.js on web
+      properties:
+        order: { $ref: '#/components/schemas/Order' }
+        razorpayKeyId: { type: string }
+        razorpayOrderId: { type: string }
+        amountPaise: { type: integer }
+        currency: { type: string }
+        prefill: { type: object, properties: { name: { type: string }, email: { type: string }, contact: { type: string } } }
+    CouponValidation:
+      type: object
+      properties:
+        valid: { type: boolean }
+        code: { type: string }
+        discountAmount: { type: number }
+        finalTotal: { type: number }
+        reason: { type: [string, 'null'], description: Why invalid, when valid=false }
+    Refund:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        orderId: { type: integer, format: int64 }
+        amount: { type: number }
+        reason: { type: [string, 'null'] }
+        status: { type: string, enum: [requested, approved, rejected, processed] }
+        createdAt: { type: string, format: date-time }
+    Project:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internshipId: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        tasks: { type: array, items: { $ref: '#/components/schemas/ProjectTask' } }
+    ProjectTask:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        projectId: { type: integer, format: int64 }
+        weekNumber: { type: integer }
+        title: { type: string }
+        instructions: { type: [string, 'null'] }
+        allowedSubmissionTypes: { type: array, items: { type: string, enum: [file, github_url, live_url] } }
+        maxScore: { type: number }
+        rubric: { type: array, items: { type: object, properties: { criterion: { type: string }, weight: { type: number }, maxPoints: { type: number } } } }
+        dueDate: { type: [string, 'null'], format: date, description: Resolved from batch start + dueOffsetDays }
+        isMandatory: { type: boolean }
+    Submission:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        taskId: { type: integer, format: int64 }
+        enrollmentId: { type: integer, format: int64 }
+        version: { type: integer }
+        submissionType: { type: string, enum: [file, github_url, live_url] }
+        fileUrl: { type: [string, 'null'], description: Signed URL when served }
+        urlValue: { type: [string, 'null'] }
+        notes: { type: [string, 'null'] }
+        status: { type: string, enum: [submitted, under_review, approved, changes_requested, rejected] }
+        submittedAt: { type: string, format: date-time }
+        review: { oneOf: [{ $ref: '#/components/schemas/SubmissionReview' }, { type: 'null' }] }
+    SubmissionReview:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        submissionId: { type: integer, format: int64 }
+        reviewerName: { type: string }
+        rubricScores: { type: array, items: { type: object, properties: { criterion: { type: string }, points: { type: number }, maxPoints: { type: number } } } }
+        totalScore: { type: [number, 'null'] }
+        decision: { type: string, enum: [approved, changes_requested, rejected] }
+        feedback: { type: [string, 'null'] }
+        reviewedAt: { type: string, format: date-time }
+    Quiz:
+      type: object
+      description: Student-safe view (no correct answers)
+      properties:
+        id: { type: integer, format: int64 }
+        internshipId: { type: integer, format: int64 }
+        title: { type: string }
+        passPercent: { type: number }
+        timeLimitMinutes: { type: [integer, 'null'] }
+        maxAttempts: { type: integer }
+        attemptsUsed: { type: integer }
+        questionCount: { type: integer }
+    QuizQuestionStudent:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        questionText: { type: string }
+        questionType: { type: string, enum: [single_choice, multiple_choice, true_false] }
+        options: { type: array, items: { type: object, properties: { id: { type: string }, text: { type: string } } } }
+        marks: { type: number }
+    QuizQuestionCreate:
+      type: object
+      required: [questionText, questionType, options, correctOptions]
+      properties:
+        questionText: { type: string }
+        questionType: { type: string, enum: [single_choice, multiple_choice, true_false] }
+        options: { type: array, items: { type: object, required: [id, text], properties: { id: { type: string }, text: { type: string } } } }
+        correctOptions: { type: array, items: { type: string } }
+        explanation: { type: string }
+        marks: { type: number, default: 1 }
+        displayOrder: { type: integer }
+    QuizAttempt:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        quizId: { type: integer, format: int64 }
+        attemptNumber: { type: integer }
+        status: { type: string, enum: [in_progress, submitted, expired] }
+        startedAt: { type: string, format: date-time }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        questions: { type: array, items: { $ref: '#/components/schemas/QuizQuestionStudent' } }
+    AttemptResult:
+      type: object
+      properties:
+        attemptId: { type: integer, format: int64 }
+        score: { type: number }
+        maxScore: { type: number }
+        percent: { type: number }
+        passed: { type: boolean }
+        questions:
+          type: array
+          items:
+            type: object
+            properties:
+              questionId: { type: integer, format: int64 }
+              correct: { type: boolean }
+              selected: { type: array, items: { type: string } }
+              correctOptions: { type: array, items: { type: string } }
+              explanation: { type: [string, 'null'] }
+    Certificate:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        certificateNo: { type: string }
+        internshipTitle: { type: string }
+        status: { type: string, enum: [issued, revoked] }
+        issuedAt: { type: string, format: date-time }
+        pdfUrl: { type: [string, 'null'], description: Signed URL when served }
+        verifyUrl: { type: string }
+    CertificateVerification:
+      type: object
+      properties:
+        valid: { type: boolean }
+        certificateNo: { type: string }
+        status: { type: string, enum: [issued, revoked] }
+        learnerName: { type: [string, 'null'] }
+        internshipTitle: { type: [string, 'null'] }
+        issuedAt: { type: [string, 'null'], format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        templateKey: { type: string }
+        title: { type: [string, 'null'] }
+        body: { type: [string, 'null'] }
+        data: { type: object }
+        readAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    NotificationPreference:
+      type: object
+      required: [channel, category, enabled]
+      properties:
+        channel: { type: string, enum: [email, sms, push, in_app] }
+        category: { type: string, enum: [transactional, reminders, marketing] }
+        enabled: { type: boolean }
+    Earning:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        internshipTitle: { type: string }
+        orderNo: { type: string }
+        grossAmount: { type: number }
+        revenueSharePercent: { type: number }
+        amount: { type: number }
+        status: { type: string, enum: [pending, available, settled, reversed] }
+        availableAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    EarningsSummary:
+      type: object
+      properties:
+        pending: { type: number }
+        available: { type: number }
+        settled: { type: number }
+        reversed: { type: number }
+        lifetime: { type: number }
+    Settlement:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        settlementNo: { type: string }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        grossAmount: { type: number }
+        tdsAmount: { type: number }
+        payableAmount: { type: number }
+        status: { type: string, enum: [initiated, processing, completed, failed] }
+        utrNumber: { type: [string, 'null'] }
+        paidAt: { type: [string, 'null'], format: date-time }
+    Ticket:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        ticketNo: { type: string }
+        category: { type: string, enum: [payment, content, technical, certificate, other] }
+        subject: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [open, in_progress, resolved, closed] }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        resolutionNote: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    Banner:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        imageUrl: { type: string }
+        linkUrl: { type: [string, 'null'] }
+        placement: { type: string, enum: [home_hero, home_strip, category_page] }
+        displayOrder: { type: integer }
+    CmsPage:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        slug: { type: string }
+        title: { type: string }
+        contentMd: { type: string }
+        metaTitle: { type: [string, 'null'] }
+        metaDescription: { type: [string, 'null'] }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        actorId: { type: [integer, 'null'], format: int64 }
+        actorRole: { type: [string, 'null'] }
+        action: { type: string }
+        entityType: { type: string }
+        entityId: { type: [integer, 'null'], format: int64 }
+        beforeData: { type: [object, 'null'] }
+        afterData: { type: [object, 'null'] }
+        createdAt: { type: string, format: date-time }

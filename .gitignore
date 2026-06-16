@@ -1,0 +1,49 @@
+# ───────────────────────── internship-api (Node + TypeScript) ─────────────────────────
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Tests / coverage
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime / temp
+tmp/
+temp/
+.cache/
+pids/
+*.pid
+*.seed
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- GUM secrets block (never commit real env / keys) ---
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.pem
+*.key
+service-account*.json

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>GUM Internships — Test-Run Tracker</title>
+<style>
+  :root { --blue:#1A73E8; --green:#188038; --grey:#5F6368; --line:#DADCE0; --bg:#F1F3F4; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#202124; margin:0; padding:14px 18px; font-size:10px; }
+  header { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid var(--blue); padding-bottom:6px; margin-bottom:8px; }
+  h1 { font-size:16px; margin:0; color:var(--blue); }
+  .sub { color:var(--grey); font-size:10px; }
+  .meta { text-align:right; font-size:10px; color:var(--grey); }
+  .meta b { color:#202124; }
+  .legend { display:flex; gap:14px; margin:6px 0 8px; font-size:9px; color:var(--grey); }
+  .legend span b { color:#202124; }
+  table { width:100%; border-collapse:collapse; }
+  /* two-column newspaper layout to fit one page */
+  .wrap { column-count:2; column-gap:16px; }
+  td { border:0.5px solid var(--line); padding:1.5px 4px; vertical-align:middle; }
+  tr.hdr td { background:var(--bg); font-weight:700; font-size:10px; padding:3px 4px; border:0.5px solid var(--line); }
+  tr.hdr .own { float:right; color:var(--blue); font-weight:700; }
+  tr.hdr .cnt { float:right; color:var(--grey); font-weight:400; margin-right:8px; }
+  .id { font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:600; width:46px; }
+  .ti { font-size:9px; }
+  .b { text-align:center; width:16px; font-size:11px; color:var(--grey); }
+  .sev { width:22px; }
+  table, tr { break-inside:avoid; }
+  .footer { margin-top:10px; font-size:9px; color:var(--grey); display:flex; justify-content:space-between; }
+  @media print { body { padding:8mm; } @page { size:A4 portrait; margin:8mm; } }
+  @media print { .noprint { display:none; } }
+</style></head>
+<body>
+<header>
+  <div><h1>GUM Internships — Test-Run Tracker</h1>
+    <div class="sub">All 162 cases · tick P (pass) / F (fail) / B (blocked); note severity S1–S4 on failures</div></div>
+  <div class="meta">Cycle: <b>____________</b> &nbsp; Build/commit: <b>____________</b><br>
+    Tester: <b>____________</b> &nbsp; Date: <b>____________</b></div>
+</header>
+<div class="legend">
+  <span><b>P</b> pass &nbsp; <b>F</b> fail &nbsp; <b>B</b> blocked/N-A</span>
+  <span>Sev: <b>S1</b> blocker · <b>S2</b> major · <b>S3</b> minor · <b>S4</b> cosmetic</span>
+  <span>Full steps &amp; expected results: docs 01–08. Log failures with the bug template (doc 00 §6).</span>
+</div>
+<div class="wrap">
+<table>
+<tr class="hdr"><td class="id">ID</td><td class="ti">Case</td><td class="b">P</td><td class="b">F</td><td class="b">B</td><td class="sev">Sev</td></tr>
+<tr class="hdr"><td colspan="6">01 · Auth & Onboarding <span class="own">T1/T2</span> <span class="cnt">14 cases</span></td></tr>
+<tr><td class="id">T-01-01</td><td class="ti">Register a new student</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-02</td><td class="ti">Login blocked before verification</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-03</td><td class="ti">Verify email OTP</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-04</td><td class="ti">Wrong OTP rejected, attempts capped</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-05</td><td class="ti">Resend cooldown + hourly cap</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-06</td><td class="ti">Login by email</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-07</td><td class="ti">Login by phone</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-08</td><td class="ti">Wrong password</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-09</td><td class="ti">Session persists across reload + auto-refresh</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-10</td><td class="ti">Logout</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-11</td><td class="ti">Forgot → reset → login with new password</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-12</td><td class="ti">Change password</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-13</td><td class="ti">Apply as instructor</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-01-14</td><td class="ti">Re-apply blocked while pending</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">02 · Catalog & Discovery <span class="own">T1</span> <span class="cnt">16 cases</span></td></tr>
+<tr><td class="id">T-02-01</td><td class="ti">Home loads featured</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-02</td><td class="ti">Catalog list + counts</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-03</td><td class="ti">Filters are shareable URLs</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-04</td><td class="ti">Each filter dimension</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-05</td><td class="ti">Free-text search</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-06</td><td class="ti">Detail renders fully</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-07</td><td class="ti">No paid content leaks</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-08</td><td class="ti">SEO metadata + JSON-LD</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-09</td><td class="ti">Seats messaging</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-10</td><td class="ti">Desktop vs mobile layout</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-11</td><td class="ti">Unknown slug</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-14</td><td class="ti">Automatic device redirect</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-15</td><td class="ti">App-shell chrome</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-16</td><td class="ti">Search opens a bottom sheet</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-17</td><td class="ti">Detail bottom-sheet + transitions</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-02-18</td><td class="ti">Cache headers</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">03 · Commerce & Payments <span class="own">T2</span> <span class="cnt">18 cases</span></td></tr>
+<tr><td class="id">T-03-01</td><td class="ti">Enroll free</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-02</td><td class="ti">Duplicate enrollment blocked</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-03</td><td class="ti">Waitlist</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-04</td><td class="ti">Valid coupon preview</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-05</td><td class="ti">Coupon rule failures</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-06</td><td class="ti">Create order with exact GST</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-07</td><td class="ti">Intra-state split</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-08</td><td class="ti">Capture via webhook → activation + invoice</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-09</td><td class="ti">Webhook idempotency</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-10</td><td class="ti">Forged signature rejected</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-11</td><td class="ti">Amount tampering flagged</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-12</td><td class="ti">Payment failure + retry</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-13</td><td class="ti">Closed-popup / abandoned</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-14</td><td class="ti">External-instructor earning recorded</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-15</td><td class="ti">System internship = no earning</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-16</td><td class="ti">Request refund</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-17</td><td class="ti">Approve → clawback chain</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-03-18</td><td class="ti">Invoice download</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">04 · Learning, Live & Media <span class="own">T1</span> <span class="cnt">19 cases</span></td></tr>
+<tr><td class="id">T-04-01</td><td class="ti">Enrolled learner gets a signed URL</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-02</td><td class="ti">Non-enrolled user blocked</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-03</td><td class="ti">Sequential unlock</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-04</td><td class="ti">Token expiry mid-session</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-05</td><td class="ti">Mark complete + weighted progress</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-06</td><td class="ti">Progress persists</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-07</td><td class="ti">Auto-complete at 90%</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-08</td><td class="ti">Document lesson</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-09</td><td class="ti">Quiz lesson</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-10</td><td class="ti">Schedule a Zoom session</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-11</td><td class="ti">Google Meet requires manual link</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-12</td><td class="ti">Join window enforced</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-13</td><td class="ti">Attendance % + manual override</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-14</td><td class="ti">Recording becomes a lesson</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-15</td><td class="ti">Live reminders</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-16</td><td class="ti">Resume upload</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-17</td><td class="ti">Role-gated folder</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-18</td><td class="ti">Size cap</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-04-19</td><td class="ti">Video upload creds</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">05 · Projects, Quizzes & Certificates <span class="own">T1/T3</span> <span class="cnt">22 cases</span></td></tr>
+<tr><td class="id">T-05-01</td><td class="ti">Task timeline with deadlines</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-02</td><td class="ti">Submit</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-03</td><td class="ti">File submission with upload</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-04</td><td class="ti">Double-submit blocked while pending</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-05</td><td class="ti">Late flag</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-06</td><td class="ti">Review queue</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-07</td><td class="ti">Rubric validation</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-08</td><td class="ti">Request resubmit</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-09</td><td class="ti">Resubmit → approve → weighted score</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-10</td><td class="ti">Max resubmits</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-11</td><td class="ti">Events → notifications</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-12</td><td class="ti">Start attempt</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-13</td><td class="ti">Autosave + submit + server scoring</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-14</td><td class="ti">Attempts exhausted</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-15</td><td class="ti">Timed expiry</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-16</td><td class="ti">Eligibility shows each failing rule</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-17</td><td class="ti">Claim blocked when ineligible</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-18</td><td class="ti">Claim when eligible → issue</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-19</td><td class="ti">Public verify</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-20</td><td class="ti">Tamper detection</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-21</td><td class="ti">Revoke</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-05-22</td><td class="ti">Idempotent claim</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">06 · Instructor, Admin & Finance <span class="own">T3/T4</span> <span class="cnt">28 cases</span></td></tr>
+<tr><td class="id">T-06-01</td><td class="ti">Instructor dashboard</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-02</td><td class="ti">Review queue</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-03</td><td class="ti">Batch manager</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-04</td><td class="ti">Live scheduler</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-05</td><td class="ti">Earnings ledger</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-06</td><td class="ti">Payout statements</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-07</td><td class="ti">Ownership</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-08</td><td class="ti">Staff-only login</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-09</td><td class="ti">RBAC nav filtering</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-10</td><td class="ti">Audit affordance</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-11</td><td class="ti">DataTable mechanics</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-12</td><td class="ti">Instructor KYC queue</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-13</td><td class="ti">KYC reject with reason template</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-14</td><td class="ti">Internship moderation</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-15</td><td class="ti">CMS</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-16</td><td class="ti">User search + filters</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-17</td><td class="ti">Suspend → sessions revoked</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-18</td><td class="ti">Role grant/revoke is super_admin-only</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-19</td><td class="ti">Manual enroll</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-20</td><td class="ti">Batch transfer</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-21</td><td class="ti">CSV export streams</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-22</td><td class="ti">Orders explorer</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-23</td><td class="ti">Refund queue + decision</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-24</td><td class="ti">Settlement run</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-25</td><td class="ti">Double-decision race</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-26</td><td class="ti">Dashboard stats</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-27</td><td class="ti">Audit log search</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-06-28</td><td class="ti">Support tickets</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">07 · Mobile Web & Flutter <span class="own">T5</span> <span class="cnt">19 cases</span></td></tr>
+<tr><td class="id">T-07-01</td><td class="ti">Automatic device redirect</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-02</td><td class="ti">Full-screen native layout on a device</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-03</td><td class="ti">App shell</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-04</td><td class="ti">Bottom sheets</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-05</td><td class="ti">Segmented control + chips</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-06</td><td class="ti">Screen transitions</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-07</td><td class="ti">Free enrollment in-app</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-08</td><td class="ti">Paid checkout</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-09</td><td class="ti">Auth parity</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-10</td><td class="ti">Indic text</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-11</td><td class="ti">Builds & runs</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-12</td><td class="ti">Home catalog</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-13</td><td class="ti">Login persists across restart</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-14</td><td class="ti">401 auto-refresh</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-15</td><td class="ti">Bottom navigation</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-16</td><td class="ti">My Internships</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-17</td><td class="ti">Logout</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-18</td><td class="ti">Consumption-first</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-07-19</td><td class="ti">Theme parity</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr class="hdr"><td colspan="6">08 · Cross-cutting & Security <span class="own">T5</span> <span class="cnt">26 cases</span></td></tr>
+<tr><td class="id">T-08-01</td><td class="ti">IDOR sweep</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-02</td><td class="ti">Role escalation</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-03</td><td class="ti">Webhook forgery</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-04</td><td class="ti">Payment tampering</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-05</td><td class="ti">Signed-URL replay/expiry</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-06</td><td class="ti">OTP brute force</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-07</td><td class="ti">JWT integrity</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-08</td><td class="ti">PII exposure</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-09</td><td class="ti">Upload abuse</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-10</td><td class="ti">Error hygiene</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-11</td><td class="ti">Catalog read latency</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-12</td><td class="ti">Pagination bounds</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-13</td><td class="ti">Idempotency under retry</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-14</td><td class="ti">Graceful provider failure</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-15</td><td class="ti">Health</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-16</td><td class="ti">Keyboard navigation</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-17</td><td class="ti">Contrast & sizing</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-18</td><td class="ti">Loading/empty/error states</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-19</td><td class="ti">Money formatting</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-20</td><td class="ti">Screen reader smoke</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-21</td><td class="ti">Money columns</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-22</td><td class="ti">No orphans</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-23</td><td class="ti">Audit completeness</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-24</td><td class="ti">Reset restores exact sample data</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-25</td><td class="ti">API tests</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+<tr><td class="id">T-08-26</td><td class="ti">Web E2E</td><td class="b">☐</td><td class="b">☐</td><td class="b">☐</td><td class="sev"></td></tr>
+</table>
+</div>
+<div class="footer">
+  <span>Tester assignment — T1 student · T2 commerce · T3 instructor · T4 admin/finance · T5 cross-cutting+mobile</span>
+  <span>Exit: all S1/S2 closed, money math verified, no in-app payment on Flutter.</span>
+</div>
+</body></html>

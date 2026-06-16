@@ -1,0 +1,113 @@
+# ============================================================================
+# OpenAPI FRAGMENT — paths added/changed by modules 2.2–2.12 (implementation-true).
+# Merge into docs/openapi.yaml; envelope/auth/error conventions unchanged.
+# All requests/responses use the {success,data,error,meta} envelope; ids int64.
+# ============================================================================
+paths:
+  # --- 2.2 auth & users (changed from 0.3 contract) -------------------------
+  /auth/register: { post: { summary: 'Register → pending_verification; OTP to email AND phone; data:{userId,verificationRequired}; meta.dev.otp echoed when NOTIFY_DRY_RUN & non-prod' } }
+  /auth/otp/request: { post: { summary: 'purposes: email_verify|phone_verify|password_reset; 60s cooldown + 3/hour/identifier' } }
+  /auth/otp/verify: { post: { summary: 'Verify email/phone; first verified channel activates account' } }
+  /auth/login: { post: { summary: 'identifier (email OR phone) + password' } }
+  /auth/logout-all: { post: { summary: 'Revoke all sessions (auth)' } }
+  /auth/password/change: { post: { summary: 'currentPassword + newPassword; revokes other sessions' } }
+  /auth/password/reset: { post: { summary: 'email + 6-digit code + newPassword' } }
+  /users/instructor-application: { post: { summary: 'KYC application (PAN/bank encrypted, last4 only); re-apply after rejection' }, get: { summary: 'Own application state' } }
+  /admin/users: { get: { summary: 'Filters q/role/status/track + pagination [moderator,support]' } }
+
+  # --- 2.3 catalog -----------------------------------------------------------
+  /catalog/internships: { get: { summary: 'Filters + level + durationWeeks + sort popular|newest|price_asc|price_desc; Cache-Control public' } }
+  /catalog/instructors/{id}: { get: { summary: 'Public instructor profile + published internships' } }
+  /catalog/banners: { get: { summary: 'Live banners (placement filter)' } }
+  /catalog/pages/{slug}: { get: { summary: 'Published CMS page' } }
+
+  # --- 2.4 enrollments / batches ----------------------------------------------
+  /enrollments: { post: { summary: 'FREE enroll (active or waitlisted); paid → /orders' } }
+  /enrollments/{id}/offer-letter: { get: { summary: 'Signed URL for offer letter PDF (OL-YYYY-XXXXXX)' } }
+  /admin/enrollments/{id}/transfer: { post: { summary: 'Batch transfer {toBatchId,reason} [moderator,support], audited' } }
+  /internships/{id}/batches: { post: {}, get: {} }
+  /batches/{id}: { patch: {} }
+  /batches/{id}/students: { get: {} }
+
+  # --- 2.5 payments -------------------------------------------------------------
+  /orders: { post: { summary: 'Create order (coupon rules server-side, CGST/SGST vs IGST split) → CheckoutParams' } }
+  /orders/{id}/retry: { post: { summary: 'New Razorpay order for unpaid order' } }
+  /orders/{id}/invoice: { get: { summary: 'Signed URL, INV/{FY}/{seq}' } }
+  /orders/{id}/refund-request: { post: {} }
+  /coupons/validate: { post: { summary: 'Preview {valid,discountAmount,finalTotal,reason}' } }
+  /payments/razorpay/webhook: { post: { summary: 'HMAC raw-body verified; idempotent; captured→activate+invoice+earning' } }
+  /admin/refunds: { get: {} }
+  /admin/refunds/{id}/decision: { post: { summary: 'approved → provider refund → enrollment suspended, earning reversed' } }
+
+  # --- 2.6 media -------------------------------------------------------------------
+  /media/upload: { post: { summary: 'multipart file+folder(resumes|submissions|assets); role-gated; 50MB cap' } }
+  /lessons/{id}/video-upload: { post: { summary: 'Create Bunny video → TUS creds [instructor]' } }
+  /lessons/{id}/video: { delete: {} }
+  /media/bunny/webhook: { post: { summary: 'Encode finished → lesson ready (shared secret ?secret=)' } }
+  /lessons/{id}/play: { get: { summary: 'Active enrollment + sequential-unlock → token-signed embed/HLS URLs (TTL, optional IP lock); 409 LESSON_LOCKED{blockingLessonId}' } }
+  /lessons/{id}/progress: { post: { summary: '{enrollmentId,watchedSeconds,completed} → duration-weighted progressPercent' } }
+
+  # --- 2.7 live ------------------------------------------------------------------------
+  /batches/{id}/live-sessions: { post: { summary: '{title,startsAt,durationMinutes,provider zoom|google_meet,manualJoinUrl?}' }, get: {} }
+  /live-sessions/{id}/join: { get: { summary: 'Window start−15m..end; logs attendance; 409 TOO_EARLY/SESSION_ENDED' } }
+  /live-sessions/{id}/attendance: { post: { summary: 'Bulk manual override' } }
+  /live-sessions/{id}/recording: { post: { summary: '{bunnyVideoId} → lesson in "Session Recordings"' } }
+  /enrollments/{id}/attendance: { get: { summary: '{attendancePercent} over ended sessions' } }
+
+  # --- 2.8 projects ---------------------------------------------------------------------
+  /projects/{id}/tasks: { post: { summary: 'Task with rubric[{criterion,weight,maxPoints}], weight, dueOffsetDays' } }
+  /projects/{id}/tasks/{taskId}: { patch: {} }
+  /enrollments/{id}/tasks: { get: { summary: 'Deadlines (batch start+offset | resubmit_due_on), latest submission, resubmitsLeft' } }
+  /tasks/{id}/submissions: { post: { summary: 'type file|github_url|live_url|video_url; versioned; late flag; max 2 resubmits → 409 MAX_RESUBMITS' } }
+  /instructor/review-queue: { get: { summary: 'Oldest-first, filters internshipId/batchId' } }
+  /submissions/{id}/review: { post: { summary: 'decision approved|resubmit; rubricScores validated; resubmit → +3 days; approved → weighted project_score' } }
+
+  # --- 2.9 quizzes & certificates ----------------------------------------------------------
+  /quizzes/{id}/questions: { post: {} }
+  /quizzes/{id}: { get: { summary: 'Student meta (no answers)' } }
+  /quizzes/{id}/attempts: { post: { summary: '409 ATTEMPTS_EXHAUSTED at limit; returns questions+expiresAt' } }
+  /attempts/{id}/answers: { put: { summary: 'Autosave {questionId:[optionIds]}; 410 when expired' } }
+  /attempts/{id}/submit: { post: { summary: 'Server scoring (multi = exact set); per-question detail' } }
+  /attempts/{id}/result: { get: {} }
+  /enrollments/{id}/certificate/eligibility: { get: { summary: 'Rule-by-rule checks from certificate_rules' } }
+  /enrollments/{id}/certificate: { post: { summary: 'Issue GUMI-YYYY-XXXXXX, grade A/B/C, QR PDF async; 409 NOT_ELIGIBLE+checks' } }
+  /certificates/me: { get: {} }
+  /certificates/{id}/download: { get: { summary: 'Signed URL' } }
+  /verify/{certificateNo}: { get: { summary: 'PUBLIC: valid,learnerName,internshipTitle,durationWeeks,grade,issuedAt — nothing else; HMAC integrity check; revoked → invalid' } }
+  /admin/certificates/{id}/revoke: { post: {} }
+
+  # --- 2.10 notifications --------------------------------------------------------------------
+  /notifications: { get: { summary: 'In-app feed; meta.unreadCount' } }
+  /notifications/{id}/read: { post: {} }
+  /notifications/read-all: { post: {} }
+  /users/me/device-tokens: { post: { summary: 'Register FCM token' }, delete: { summary: 'Unregister' } }
+  /users/me/notification-preferences: { put: { summary: '{channel,category reminders|marketing,enabled}; transactional immutable' } }
+
+  # --- 2.11 earnings ----------------------------------------------------------------------------
+  /instructor/earnings/summary: { get: { summary: 'pending/available/settled/reversed/lifetime + 12-month grouping' } }
+  /instructor/earnings: { get: { summary: 'Ledger with order refs; reversals shown negative' } }
+  /instructor/payouts: { get: {} }
+  /instructor/payouts/{id}/statement: { get: { summary: 'Statement PDF → signed URL' } }
+  /admin/settlements: { post: { summary: 'Group available earnings per instructor/period; TDS %; status draft' } }
+  /admin/settlements/{id}: { patch: { summary: 'draft→approved→paid (paid requires utrNumber)' } }
+
+  # --- 2.12 admin --------------------------------------------------------------------------------
+  /admin/instructors/{id}/kyc-decision: { post: { summary: 'approved → instructor role + share % + agreement sent' } }
+  /admin/internships/{id}/decision: { post: { summary: 'pending_review → published|rejected(reason)' } }
+  /admin/users/{id}/status: { patch: { summary: 'suspend (revokes sessions) / restore' } }
+  /admin/users/{id}/roles: { post: { summary: '[super_admin]' } }
+  /admin/users/{id}/roles/{role}: { delete: {} }
+  /admin/enrollments/manual: { post: { summary: 'Support comp-enroll (audited)' } }
+  /admin/dashboard: { get: { summary: 'today/7d/30d signups, enrollments, revenue, completion rate, pending queues' } }
+  /admin/exports/{entity}: { get: { summary: 'users|orders|enrollments as STREAMED CSV (keyset chunks)' } }
+  /admin/audit-logs: { get: { summary: 'Filters actorId/action/entityType' } }
+  /admin/cms/banners: { post: {} }
+  /admin/cms/banners/{id}: { patch: {} }
+  /admin/cms/pages: { post: {} }
+  /admin/cms/pages/{id}: { patch: {} }
+  /tickets: { post: { summary: 'TKT-YYYY-XXXXXX' } }
+  /tickets/me: { get: {} }
+  /tickets/{id}: { get: { summary: 'Thread with replies' } }
+  /tickets/{id}/replies: { post: {} }
+  /admin/tickets: { get: {} }
+  /admin/tickets/{id}: { patch: { summary: 'status/priority/assign/resolve → notifies requester' } }
