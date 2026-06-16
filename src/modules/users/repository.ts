@@ -84,7 +84,7 @@ export const usersRepository = {
       `select u.id, u.email, u.phone, u.full_name, u.avatar_url, u.status,
               u.email_verified_at, u.phone_verified_at, u.marketing_consent,
               u.track, u.resume_url, u.last_login_at, u.created_at,
-              coalesce(array_agg(r.name order by r.name) filter (where r.name is not null), '{}') as roles
+              coalesce(array_agg(r.name::text order by r.name::text) filter (where r.name is not null), '{}') as roles
        from users u
        left join user_roles ur on ur.user_id = u.id
        left join roles r on r.id = ur.role_id
