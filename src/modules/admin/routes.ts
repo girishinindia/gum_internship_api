@@ -153,6 +153,16 @@ const bannerSchema = z.object({
   endsAt: z.string().datetime({ offset: true }).optional(),
   isActive: z.boolean().optional(),
 });
+router.get('/admin/cms/banners', requireAuth, requireRoles('moderator'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    ApiResponse.ok(res, await adminService.cmsBanners());
+  }));
+
+router.get('/admin/cms/pages', requireAuth, requireRoles('moderator'),
+  asyncHandler(async (_req: Request, res: Response) => {
+    ApiResponse.ok(res, await adminService.cmsPages());
+  }));
+
 router.post('/admin/cms/banners', requireAuth, requireRoles('moderator'), zodValidate(bannerSchema),
   asyncHandler(async (req: Request, res: Response) => {
     ApiResponse.created(res, await adminService.upsertBanner(uid(req), null, req.body as never));

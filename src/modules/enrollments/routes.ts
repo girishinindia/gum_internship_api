@@ -107,6 +107,33 @@ router.get(
   }),
 );
 
+/** Admin/support: browse enrolments (filter by internship/user/status/q). */
+router.get(
+  '/admin/enrollments',
+  requireAuth,
+  requireRoles('moderator', 'support'),
+  zodValidate(
+    z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      internshipId: z.coerce.number().int().positive().optional(),
+      userId: z.coerce.number().int().positive().optional(),
+      status: z.enum(['pending_payment', 'waitlisted', 'active', 'completed', 'dropped', 'suspended']).optional(),
+      q: z.string().max(120).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req: Request, res: Response) => {
+    const q = req.query as unknown as { page: number; limit: number; internshipId?: number; userId?: number; status?: string; q?: string };
+    const { items, pagination } = await svc.adminList(
+      { internshipId: q.internshipId, userId: q.userId, status: q.status, q: q.q },
+      q.page,
+      q.limit,
+    );
+    ApiResponse.paginated(res, items, pagination);
+  }),
+);
+
 /** Admin/support: batch transfer (audited). */
 router.post(
   '/admin/enrollments/:enrollmentId/transfer',

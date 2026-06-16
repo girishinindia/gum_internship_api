@@ -329,6 +329,25 @@ export const enrollmentsService = {
     );
   },
 
+  /** Admin ops: browse enrolments across users/internships. */
+  async adminList(
+    filters: { internshipId?: number; userId?: number; status?: string; q?: string },
+    page: number,
+    limit: number,
+  ): Promise<{ items: unknown[]; pagination: PaginationMeta }> {
+    const rows = await repo.adminList(filters, limit, (page - 1) * limit);
+    const total = Number(rows[0]?.total_count ?? 0);
+    return {
+      items: rows.map((r) => ({
+        id: r.id, status: r.status, progressPercent: Number(r.progress_percent),
+        enrolledAt: r.enrolled_at, userId: r.user_id, userName: r.user_name, userEmail: r.user_email,
+        internshipId: r.internship_id, internshipTitle: r.internship_title,
+        batchId: r.batch_id, batchName: r.batch_name,
+      })),
+      pagination: buildPagination(page, limit, total),
+    };
+  },
+
   /** Lightweight enrolment check for the public detail-page CTA. */
   async myEnrollmentForInternship(
     userId: number,

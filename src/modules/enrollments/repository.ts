@@ -216,4 +216,25 @@ export const enrollmentsRepository = {
       ],
     );
   },
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminList(filters: { internshipId?: number; userId?: number; status?: string; q?: string }, limit: number, offset: number): Promise<(Record<string, any> & { total_count: number })[]> {
+    return query(
+      `select e.id, e.status, e.progress_percent, e.enrolled_at, e.batch_id, e.internship_id,
+              u.id as user_id, u.full_name as user_name, u.email::text as user_email,
+              i.title as internship_title, b.name as batch_name,
+              count(*) over()::int8 as total_count
+       from enrollments e
+       join users u on u.id = e.user_id
+       join internships i on i.id = e.internship_id
+       left join internship_batches b on b.id = e.batch_id
+       where ($1::int8 is null or e.internship_id = $1)
+         and ($2::int8 is null or e.user_id = $2)
+         and ($3::enrollment_status is null or e.status = $3)
+         and ($4::text is null or u.full_name ilike $4 or u.email::text ilike $4)
+       order by e.enrolled_at desc nulls last
+       limit ${limit} offset ${offset}`,
+      [filters.internshipId ?? null, filters.userId ?? null, filters.status ?? null, filters.q ? `%${filters.q}%` : null],
+    );
+  },
 };

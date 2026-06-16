@@ -267,6 +267,23 @@ export const adminService = {
   },
 
   // ---- CMS ------------------------------------------------------------
+  async cmsBanners(): Promise<Row[]> {
+    return query<Row>(
+      `select id, title, image_url as "imageUrl", link_url as "linkUrl", placement,
+              display_order as "displayOrder", starts_at as "startsAt", ends_at as "endsAt", is_active as "isActive"
+       from cms_banners order by placement, display_order, id`,
+    );
+  },
+
+  async cmsPages(): Promise<Row[]> {
+    return query<Row>(
+      `select id, slug, title, content_md as "contentMd", meta_title as "metaTitle",
+              meta_description as "metaDescription", is_published as "isPublished",
+              published_at as "publishedAt", updated_at as "updatedAt"
+       from cms_pages order by slug`,
+    );
+  },
+
   async upsertBanner(actorId: number, id: number | null, input: Row): Promise<Row> {
     const row = id
       ? await queryOne<Row>(
