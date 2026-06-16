@@ -72,4 +72,19 @@ export const orgsService = {
       invoices: orders,
     };
   },
+
+  // --- White-label branding ---
+  async getBranding(orgId: number, userId: number): Promise<Record<string, unknown> | null> {
+    await requireManage(orgId, userId);
+    return repo.getBranding(orgId);
+  },
+  async updateBranding(orgId: number, userId: number, input: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    await requireManage(orgId, userId);
+    return repo.updateBranding(orgId, input);
+  },
+  /** Public: resolve a custom domain to its brand (for white-label theming). */
+  brandingByDomain(domain: string): Promise<Record<string, unknown> | null> {
+    if (!domain) return Promise.resolve(null);
+    return repo.brandingByDomain(domain);
+  },
 };

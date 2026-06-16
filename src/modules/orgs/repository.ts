@@ -156,4 +156,40 @@ export const orgsRepository = {
       [orgId],
     );
   },
+
+  // --- White-label branding ---
+  getBranding(orgId: number): Promise<Record<string, unknown> | null> {
+    return queryOne(
+      `select id, name, brand_name as "brandName", logo_url as "logoUrl", primary_color as "primaryColor",
+              support_email as "supportEmail", custom_domain as "customDomain"
+       from organizations where id = $1`,
+      [orgId],
+    );
+  },
+
+  brandingByDomain(domain: string): Promise<Record<string, unknown> | null> {
+    return queryOne(
+      `select id, coalesce(brand_name, name) as "brandName", logo_url as "logoUrl",
+              primary_color as "primaryColor", support_email as "supportEmail", custom_domain as "customDomain"
+       from organizations where lower(custom_domain) = lower($1)`,
+      [domain],
+    );
+  },
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async updateBranding(orgId: number, input: Record<string, any>): Promise<Record<string, unknown> | null> {
+    const map: Record<string, string> = {
+      brandName: 'brand_name', logoUrl: 'logo_url', primaryColor: 'primary_color',
+      supportEmail: 'support_email', customDomain: 'custom_domain',
+    };
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [k, col] of Object.entries(map)) {
+      if (input[k] !== undefined) { params.push(input[k] === '' ? null : input[k]); sets.push(`${col} = $${params.length}`); }
+    }
+    if (sets.length === 0) return this.getBranding(orgId);
+    params.push(orgId);
+    await query(`update organizations set ${sets.join(', ')}, updated_at = now() where id = $${params.length}`, params);
+    return this.getBranding(orgId);
+  },
 };

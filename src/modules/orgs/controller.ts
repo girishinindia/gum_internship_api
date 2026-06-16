@@ -33,4 +33,13 @@ export const orgsController = {
   async team(req: Request, res: Response): Promise<void> {
     ApiResponse.ok(res, await orgsService.team(orgId(req), uid(req)));
   },
+  async getBranding(req: Request, res: Response): Promise<void> {
+    ApiResponse.ok(res, await orgsService.getBranding(orgId(req), uid(req)));
+  },
+  async updateBranding(req: Request, res: Response): Promise<void> {
+    ApiResponse.ok(res, await orgsService.updateBranding(orgId(req), uid(req), req.body as Record<string, unknown>));
+  },
+  async brandingByDomain(req: Request, res: Response): Promise<void> {
+    ApiResponse.ok(res, await orgsService.brandingByDomain(String(req.query.domain ?? '')));
+  },
 };
