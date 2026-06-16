@@ -75,6 +75,27 @@ router.get(
   }),
 );
 
+/* --- Open Badges v2.0 (raw JSON, NOT the API envelope — validators read it directly) --- */
+router.get('/badges/issuer', (_req: Request, res: Response) => {
+  res.json(certificatesService.openBadgeIssuer());
+});
+router.get(
+  '/badges/class/:internshipId',
+  zodValidate(z.object({ internshipId: z.coerce.number().int().positive() }), 'params'),
+  asyncHandler(async (req: Request, res: Response) => {
+    res.json(await certificatesService.openBadgeClass(Number(req.params.internshipId)));
+  }),
+);
+router.get(
+  '/badges/assertion/:certificateNo',
+  zodValidate(certNoParam, 'params'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const assertion = await certificatesService.openBadgeAssertion(String(req.params.certificateNo));
+    if (!assertion) { res.status(404).json({ error: 'Certificate not found' }); return; }
+    res.json(assertion);
+  }),
+);
+
 router.post(
   '/admin/certificates/:certificateId/revoke',
   requireAuth,

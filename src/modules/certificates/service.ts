@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import dayjs from 'dayjs';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
@@ -185,6 +185,55 @@ export const certificatesService = {
     };
   },
 
+  /* --- Open Badges v2.0 — portable, verifiable credentials (hosted) --- */
+  openBadgeIssuer(): Record<string, unknown> {
+    return {
+      '@context': 'https://w3id.org/openbadges/v2',
+      type: 'Issuer',
+      id: `${env.API_BASE_URL}/v1/badges/issuer`,
+      name: 'GUM Internships',
+      url: env.WEB_APP_URL,
+      email: env.BREVO_SENDER_EMAIL,
+    };
+  },
+
+  async openBadgeClass(internshipId: number): Promise<Record<string, unknown>> {
+    const i = await queryOne<Row>(`select id, title, short_description, thumbnail_url from internships where id = $1`, [internshipId]);
+    if (!i) throw AppError.notFound('Internship');
+    return {
+      '@context': 'https://w3id.org/openbadges/v2',
+      type: 'BadgeClass',
+      id: `${env.API_BASE_URL}/v1/badges/class/${internshipId}`,
+      name: `${i.title} — Completion`,
+      description: i.short_description ?? `Awarded for completing the ${i.title} internship.`,
+      image: i.thumbnail_url ?? `${env.WEB_APP_URL}/badge.png`,
+      criteria: { narrative: `Complete the ${i.title} internship — required lessons and graded project work.` },
+      issuer: `${env.API_BASE_URL}/v1/badges/issuer`,
+      tags: ['internship', 'GUM'],
+    };
+  },
+
+  async openBadgeAssertion(certificateNo: string): Promise<Record<string, unknown> | null> {
+    const c = await queryOne<Row>(
+      `select c.*, u.email as user_email from certificates c join users u on u.id = c.user_id where c.certificate_no = $1`,
+      [certificateNo],
+    );
+    if (!c) return null;
+    const salt = 'gum-open-badge-v2';
+    const identity = `sha256$${createHash('sha256').update(String(c.user_email ?? '').toLowerCase() + salt).digest('hex')}`;
+    return {
+      '@context': 'https://w3id.org/openbadges/v2',
+      type: 'Assertion',
+      id: `${env.API_BASE_URL}/v1/badges/assertion/${c.certificate_no}`,
+      recipient: { type: 'email', hashed: true, salt, identity },
+      badge: `${env.API_BASE_URL}/v1/badges/class/${c.internship_id}`,
+      issuedOn: new Date(c.issued_at as string).toISOString(),
+      verification: { type: 'HostedBadge' },
+      evidence: `${env.CERTIFICATE_VERIFY_BASE_URL}/${c.certificate_no}`,
+      revoked: c.status === 'revoked',
+    };
+  },
+
   async myCertificates(userId: number): Promise<unknown[]> {
     const rows = await query<Row>(
       `select c.*, i.title from certificates c join internships i on i.id = c.internship_id where c.user_id = $1`,
@@ -200,6 +249,7 @@ export const certificatesService = {
         linkedinAddUrl: c.status === 'issued'
           ? linkedinAddToProfileUrl({ title: String(c.title), certificateNo: c.certificate_no, issuedAt: c.issued_at as Date, verifyUrl })
           : null,
+        openBadgeUrl: c.status === 'issued' ? `${env.API_BASE_URL}/v1/badges/assertion/${c.certificate_no}` : null,
         downloadReady: c.pdf_url !== null,
       };
     });
