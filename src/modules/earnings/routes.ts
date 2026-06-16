@@ -56,6 +56,14 @@ router.get('/instructor/payouts/:settlementId/statement', requireAuth, requireRo
     ApiResponse.ok(res, await earningsService.statement(uid(req), Number(req.params.settlementId)));
   }));
 
+router.get('/admin/settlements', requireAuth, requireRoles('finance_admin'),
+  zodValidate(pageQuery.extend({ status: z.enum(['draft', 'approved', 'paid', 'failed']).optional() }), 'query'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const q = req.query as unknown as { page: number; limit: number; status?: string };
+    const { items, pagination } = await earningsService.adminSettlements(q.status, q.page, q.limit);
+    ApiResponse.paginated(res, items, pagination);
+  }));
+
 router.post('/admin/settlements', requireAuth, requireRoles('finance_admin'),
   zodValidate(createSettlementSchema),
   asyncHandler(async (req: Request, res: Response) => {

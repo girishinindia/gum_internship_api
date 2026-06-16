@@ -88,6 +88,26 @@ export const earningsService = {
     };
   },
 
+  /** Admin: all settlements across instructors (status is the API-level value). */
+  async adminSettlements(status: string | undefined, page: number, limit: number): Promise<{ items: unknown[]; pagination: PaginationMeta }> {
+    const dbStatus = status
+      ? status === 'failed' ? 'failed' : (STATUS_MAP as Record<string, string>)[status] ?? null
+      : null;
+    const rows = await query<Row>(
+      `select s.*, u.full_name as instructor_name, count(*) over()::int8 as total_count
+       from payout_settlements s
+       join instructor_profiles ip on ip.id = s.instructor_profile_id
+       join users u on u.id = ip.user_id
+       where ($1::settlement_status is null or s.status = $1::settlement_status)
+       order by s.created_at desc limit ${limit} offset ${(page - 1) * limit}`,
+      [dbStatus],
+    );
+    return {
+      items: rows.map((r) => this.dto(r)),
+      pagination: buildPagination(page, limit, Number(rows[0]?.total_count ?? 0)),
+    };
+  },
+
   /** Admin: settle every available earning of an instructor in a period (status draft). */
   async createSettlement(
     actorId: number,

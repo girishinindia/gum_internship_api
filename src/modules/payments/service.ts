@@ -423,6 +423,20 @@ export const paymentsService = {
     };
   },
 
+  async adminOrders(status: string | undefined, q: string | undefined, page: number, limit: number): Promise<{ items: unknown[]; pagination: PaginationMeta }> {
+    const rows = await repo.adminOrders(status, q, limit, (page - 1) * limit);
+    const total = rows[0]?.total_count ?? 0;
+    return {
+      items: rows.map((r) => ({
+        id: r.id, orderNo: r.order_no, userName: r.user_name, userEmail: r.user_email,
+        internshipTitle: r.internship_title, totalAmount: Number(r.total_amount),
+        status: r.status, invoiceNo: r.invoice_no, invoiceUrl: r.invoice_url,
+        hasRefund: r.has_refund, createdAt: r.created_at,
+      })),
+      pagination: buildPagination(page, limit, total),
+    };
+  },
+
   /** Async invoice pipeline: pdf → Bunny private → email. Idempotent via invoice_url. */
   queueInvoice(orderId: number): void {
     jobQueue.enqueue(`invoice:${orderId}`, async () => {

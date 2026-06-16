@@ -125,6 +125,26 @@ router.get(
 );
 
 router.get(
+  '/admin/orders',
+  requireAuth,
+  requireRoles('finance_admin'),
+  zodValidate(
+    z.object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+      status: z.enum(['created', 'pending', 'paid', 'failed', 'refunded', 'cancelled']).optional(),
+      q: z.string().max(120).optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req: Request, res: Response) => {
+    const q = req.query as unknown as { page: number; limit: number; status?: string; q?: string };
+    const { items, pagination } = await svc.adminOrders(q.status, q.q, q.page, q.limit);
+    ApiResponse.paginated(res, items, pagination);
+  }),
+);
+
+router.get(
   '/admin/refunds',
   requireAuth,
   requireRoles('finance_admin'),

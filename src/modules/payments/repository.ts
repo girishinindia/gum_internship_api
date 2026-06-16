@@ -374,4 +374,22 @@ export const paymentsRepository = {
   markOrderRefunded(orderId: number): Promise<unknown> {
     return query(`update orders set status = 'refunded' where id = $1`, [orderId]);
   },
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminOrders(status: string | undefined, q: string | undefined, limit: number, offset: number): Promise<(Record<string, any> & { total_count: number })[]> {
+    return query(
+      `select o.id, o.order_no, o.total_amount, o.status, o.invoice_no, o.invoice_url, o.created_at,
+              u.full_name as user_name, u.email::text as user_email, i.title as internship_title,
+              exists (select 1 from refunds rf where rf.order_id = o.id) as has_refund,
+              count(*) over()::int8 as total_count
+       from orders o
+       join users u on u.id = o.user_id
+       left join internships i on i.id = o.internship_id
+       where ($1::order_status is null or o.status = $1)
+         and ($2::text is null or o.order_no ilike $2 or u.full_name ilike $2 or u.email::text ilike $2)
+       order by o.created_at desc
+       limit ${limit} offset ${offset}`,
+      [status ?? null, q ? `%${q}%` : null],
+    );
+  },
 };
