@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { ApiResponse } from '../../core/apiResponse';
 import { AppError } from '../../core/appError';
 import { asyncHandler } from '../../core/asyncHandler';
@@ -74,6 +75,16 @@ router.get(
       offerLetterNo: enrollment.offer_letter_no,
       ...storageService.signedPrivateUrl(enrollment.offer_letter_url),
     });
+  }),
+);
+
+/** Does the caller already have a (non-dropped) enrollment for this internship? */
+router.get(
+  '/enrollments/mine/by-internship/:internshipId',
+  requireAuth,
+  zodValidate(z.object({ internshipId: z.coerce.number().int().positive() }), 'params'),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.ok(res, await svc.myEnrollmentForInternship(uid(req), Number(req.params.internshipId)));
   }),
 );
 

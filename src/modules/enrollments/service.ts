@@ -329,6 +329,15 @@ export const enrollmentsService = {
     );
   },
 
+  /** Lightweight enrolment check for the public detail-page CTA. */
+  async myEnrollmentForInternship(
+    userId: number,
+    internshipId: number,
+  ): Promise<{ enrollmentId: number; status: string } | null> {
+    const e = await repo.findLiveEnrollment(userId, internshipId);
+    return e ? { enrollmentId: e.id, status: e.status } : null;
+  },
+
   /** Async offer-letter pipeline: pdf → Bunny private zone → email. */
   queueOfferLetter(enrollmentId: number): void {
     jobQueue.enqueue(`offer-letter:${enrollmentId}`, async () => {
