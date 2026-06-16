@@ -15,11 +15,13 @@ import { registerNotificationSubscribers } from './modules/notifications/service
 import { registerGamificationSubscribers } from './modules/gamification/service';
 import { registerCpdSubscribers } from './modules/cpd/service';
 import { registerEnrollmentJobs } from './modules/enrollments/service';
+import { registerAnalyticsSubscribers } from './services/analytics';
 
 registerNotificationSubscribers();
 registerGamificationSubscribers();
 registerCpdSubscribers();
 registerEnrollmentJobs(); // durable-queue handlers (active only when JOB_QUEUE_DRIVER=pg)
+registerAnalyticsSubscribers();
 
 export function createApp(): express.Express {
   const app = express();

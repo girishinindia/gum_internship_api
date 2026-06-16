@@ -267,6 +267,43 @@ export const adminService = {
   },
 
   // ---- CMS ------------------------------------------------------------
+  /** Product analytics: funnel + daily trends (live from source tables) + tracked events. */
+  async analytics(days: number): Promise<Row> {
+    const since = `now() - interval '${Math.trunc(days)} days'`; // days is a validated int
+    const funnel = await queryOne<Row>(
+      `select
+         (select count(*) from users where created_at >= ${since} and status <> 'deleted')::int as signups,
+         (select count(*) from enrollments where enrolled_at >= ${since})::int as enrollments,
+         (select count(*) from orders where status='paid' and created_at >= ${since})::int as paid_orders,
+         (select coalesce(sum(total_amount),0) from orders where status='paid' and created_at >= ${since})::float8 as revenue,
+         (select count(*) from certificates where issued_at >= ${since})::int as certificates`,
+    );
+    const signupSeries = await query<Row>(
+      `select date_trunc('day', created_at)::date as day, count(*)::int as n
+       from users where created_at >= ${since} group by 1 order by 1`,
+    );
+    const enrollSeries = await query<Row>(
+      `select date_trunc('day', enrolled_at)::date as day, count(*)::int as n
+       from enrollments where enrolled_at >= ${since} group by 1 order by 1`,
+    );
+    const events = await query<Row>(
+      `select name, count(*)::int as n from analytics_events where created_at >= ${since} group by name order by n desc`,
+    );
+    return {
+      days,
+      funnel: {
+        signups: Number(funnel?.signups ?? 0),
+        enrollments: Number(funnel?.enrollments ?? 0),
+        paidOrders: Number(funnel?.paid_orders ?? 0),
+        revenue: Number(funnel?.revenue ?? 0),
+        certificates: Number(funnel?.certificates ?? 0),
+      },
+      signupSeries: signupSeries.map((r) => ({ day: r.day, count: r.n })),
+      enrollSeries: enrollSeries.map((r) => ({ day: r.day, count: r.n })),
+      events: events.map((r) => ({ name: r.name, count: r.n })),
+    };
+  },
+
   async cmsBanners(): Promise<Row[]> {
     return query<Row>(
       `select id, title, image_url as "imageUrl", link_url as "linkUrl", placement,

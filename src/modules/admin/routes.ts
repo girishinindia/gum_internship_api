@@ -127,6 +127,12 @@ router.get('/admin/dashboard', requireAuth, requireRoles('moderator', 'finance_a
     ApiResponse.ok(res, await adminService.dashboard());
   }));
 
+router.get('/admin/analytics', requireAuth, requireRoles('moderator', 'finance_admin', 'support'),
+  zodValidate(z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }), 'query'),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.ok(res, await adminService.analytics(Number((req.query as unknown as { days: number }).days)));
+  }));
+
 router.get('/admin/exports/:entity', requireAuth, requireRoles('finance_admin', 'moderator'),
   asyncHandler(async (req: Request, res: Response) => {
     await adminService.streamCsv(res, req.params.entity as 'users' | 'orders' | 'enrollments');
