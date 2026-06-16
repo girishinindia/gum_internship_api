@@ -23,6 +23,7 @@ import jobsRoutes from '../modules/jobs/routes';
 import orgsRoutes from '../modules/orgs/routes';
 import cpdRoutes from '../modules/cpd/routes';
 import bundlesRoutes from '../modules/bundles/routes';
+import privacyRoutes from '../modules/privacy/routes';
 
 /**
  * All module routers mount at the /v1 root; each module defines its FULL
@@ -69,3 +70,4 @@ apiRouter.use(jobsRoutes);
 apiRouter.use(orgsRoutes);
 apiRouter.use(cpdRoutes);
 apiRouter.use(bundlesRoutes);
+apiRouter.use(privacyRoutes);
