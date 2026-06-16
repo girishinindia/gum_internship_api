@@ -4,6 +4,8 @@ import { AppError } from '../../core/appError';
 import { ErrorCodes } from '../../core/errorCodes';
 import type { RoleName } from '../../middlewares/auth';
 import {
+  decryptSecret,
+  encryptSecret,
   generateOtp,
   generateRefreshToken,
   hashOtp,
@@ -11,6 +13,7 @@ import {
   sha256,
   verifyPassword,
 } from '../../services/crypto';
+import { generateBackupCodes, generateTotpSecret, otpauthUrl, verifyTotp } from '../../services/totp';
 import { notifyService } from '../../services/notify';
 import type { UserRow } from './repository';
 import { authRepository as repo } from './repository';
@@ -38,6 +41,7 @@ export interface PublicUser {
   resumeUrl: string | null;
   marketingConsent: boolean;
   roles: RoleName[];
+  twoFactorEnabled: boolean;
   createdAt: Date;
 }
 
@@ -46,6 +50,12 @@ export interface AuthTokens {
   refreshToken: string;
   expiresIn: number;
   user: PublicUser;
+}
+
+/** Returned by login when the account has 2FA — the client must then call verify. */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
 }
 
 /** Only when OTPs can't actually be delivered (dry run, non-prod) do we echo them. */
@@ -68,6 +78,7 @@ export async function toPublicUser(user: UserRow): Promise<PublicUser> {
     resumeUrl: user.resume_url,
     marketingConsent: user.marketing_consent,
     roles,
+    twoFactorEnabled: user.totp_enabled,
     createdAt: user.created_at,
   };
 }
@@ -79,6 +90,25 @@ function signAccessToken(userId: number, roles: RoleName[]): { token: string; ex
     expiresIn,
   });
   return { token, expiresIn };
+}
+
+/** Short-lived token bridging the password step and the 2FA step of login. */
+function signChallenge(userId: number): string {
+  return jwt.sign({ purpose: '2fa' }, env.JWT_ACCESS_SECRET, { subject: String(userId), expiresIn: 300 });
+}
+function verifyChallenge(token: string): number {
+  try {
+    const p = jwt.verify(token, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as { sub?: string; purpose?: string };
+    if (p.purpose !== '2fa' || !p.sub) throw new Error('bad challenge');
+    return Number(p.sub);
+  } catch {
+    throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 'Two-factor session expired — please log in again');
+  }
+}
+
+/** Pull just the digits so backup codes match whether typed "1234-5678" or "12345678". */
+function digitsOnly(s: string): string {
+  return s.replace(/\D/g, '');
 }
 
 async function issueTokens(
@@ -257,7 +287,7 @@ export const authService = {
   async login(
     input: LoginInput,
     ctx: { userAgent: string | null; ip: string | null },
-  ): Promise<AuthTokens> {
+  ): Promise<AuthTokens | TwoFactorChallenge> {
     const user = input.identifier.includes('@')
       ? await repo.findUserByEmail(input.identifier)
       : await repo.findUserByPhone(
@@ -277,8 +307,75 @@ export const authService = {
       throw new AppError(ErrorCodes.ACCOUNT_SUSPENDED, 'This account is not active');
     }
 
+    // 2FA: stop here and ask for a code (no tokens issued until verified).
+    if (user.totp_enabled) {
+      return { twoFactorRequired: true, challengeToken: signChallenge(user.id) };
+    }
+
     await repo.touchLastLogin(user.id);
     return issueTokens(user, ctx);
+  },
+
+  /** Step 2 of login for 2FA accounts: validate the challenge + TOTP/backup code. */
+  async verifyTwoFactor(
+    input: { challengeToken: string; token: string },
+    ctx: { userAgent: string | null; ip: string | null },
+  ): Promise<AuthTokens> {
+    const userId = verifyChallenge(input.challengeToken);
+    const user = await repo.findUserById(userId);
+    const t = await repo.findTotp(userId);
+    if (!user || !t?.totp_enabled || !t.totp_secret) {
+      throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 'Two-factor is not set up for this account');
+    }
+    const digits = digitsOnly(input.token);
+    const secret = decryptSecret(t.totp_secret);
+    let ok = digits.length === 6 && verifyTotp(secret, digits);
+    if (!ok && digits.length === 8) ok = await repo.consumeBackupCode(userId, sha256(digits));
+    if (!ok) throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 'Incorrect code — try your authenticator or a backup code');
+
+    await repo.touchLastLogin(userId);
+    return issueTokens(user, ctx);
+  },
+
+  /** Begin enrolment: create a pending secret and return it for the authenticator app. */
+  async setupTwoFactor(userId: number): Promise<{ secret: string; otpauthUrl: string }> {
+    const user = await repo.findUserById(userId);
+    if (!user) throw AppError.notFound('User');
+    const existing = await repo.findTotp(userId);
+    if (existing?.totp_enabled) throw AppError.conflict('Two-factor is already enabled — disable it first to re-enrol');
+    const secret = generateTotpSecret();
+    await repo.setTotpSecret(userId, encryptSecret(secret));
+    return { secret, otpauthUrl: otpauthUrl(secret, user.email ?? user.full_name) };
+  },
+
+  /** Confirm enrolment with a current code; returns one-time backup codes (shown once). */
+  async enableTwoFactor(userId: number, token: string): Promise<{ backupCodes: string[] }> {
+    const t = await repo.findTotp(userId);
+    if (!t?.totp_secret) throw AppError.validation('Start two-factor setup first');
+    if (t.totp_enabled) throw AppError.conflict('Two-factor is already enabled');
+    const secret = decryptSecret(t.totp_secret);
+    if (!verifyTotp(secret, digitsOnly(token))) {
+      throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 'Incorrect code — check your authenticator and try again');
+    }
+    const codes = generateBackupCodes();
+    await repo.enableTotp(userId, codes.map((c) => sha256(digitsOnly(c))));
+    return { backupCodes: codes };
+  },
+
+  /** Turn 2FA off (requires a current code or a backup code). */
+  async disableTwoFactor(userId: number, token: string): Promise<{ disabled: true }> {
+    const t = await repo.findTotp(userId);
+    if (!t?.totp_enabled || !t.totp_secret) {
+      await repo.disableTotp(userId);
+      return { disabled: true };
+    }
+    const digits = digitsOnly(token);
+    const secret = decryptSecret(t.totp_secret);
+    const ok = (digits.length === 6 && verifyTotp(secret, digits))
+      || (digits.length === 8 && (await repo.consumeBackupCode(userId, sha256(digits))));
+    if (!ok) throw new AppError(ErrorCodes.INVALID_CREDENTIALS, 'Incorrect code');
+    await repo.disableTotp(userId);
+    return { disabled: true };
   },
 
   /** Rotation with reuse detection: a revoked token presented again nukes every session. */

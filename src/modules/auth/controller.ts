@@ -71,4 +71,27 @@ export const authController = {
     await authService.changePassword(req.user.id, req.body as ChangePasswordInput);
     ApiResponse.ok(res, { message: 'Password changed — other devices were logged out' });
   },
+
+  // --- 2FA (TOTP) ---
+  async setupTwoFactor(req: Request, res: Response): Promise<void> {
+    if (!req.user) throw AppError.unauthorized();
+    ApiResponse.ok(res, await authService.setupTwoFactor(req.user.id));
+  },
+
+  async enableTwoFactor(req: Request, res: Response): Promise<void> {
+    if (!req.user) throw AppError.unauthorized();
+    const { token } = req.body as { token: string };
+    ApiResponse.ok(res, await authService.enableTwoFactor(req.user.id, token));
+  },
+
+  async disableTwoFactor(req: Request, res: Response): Promise<void> {
+    if (!req.user) throw AppError.unauthorized();
+    const { token } = req.body as { token: string };
+    ApiResponse.ok(res, await authService.disableTwoFactor(req.user.id, token));
+  },
+
+  async verifyTwoFactor(req: Request, res: Response): Promise<void> {
+    const body = req.body as { challengeToken: string; token: string };
+    ApiResponse.ok(res, await authService.verifyTwoFactor(body, clientCtx(req)));
+  },
 };

@@ -16,6 +16,7 @@ export interface UserRow {
   track: 'education' | 'employed' | null;
   resume_url: string | null;
   last_login_at: Date | null;
+  totp_enabled: boolean;
   created_at: Date;
 }
 
@@ -42,7 +43,7 @@ export interface SessionRow {
 
 const USER_COLS = `id, email, phone, password_hash, full_name, avatar_url, status,
   email_verified_at, phone_verified_at, marketing_consent, track, resume_url,
-  last_login_at, created_at`;
+  last_login_at, totp_enabled, created_at`;
 
 export const authRepository = {
   findUserByEmail(email: string): Promise<UserRow | null> {
@@ -63,6 +64,30 @@ export const authRepository = {
       [userId],
     );
     return rows.map((r) => r.name);
+  },
+
+  // --- 2FA (TOTP) ---
+  findTotp(userId: number): Promise<{ totp_secret: string | null; totp_enabled: boolean; totp_backup_codes: string[] } | null> {
+    return queryOne(`select totp_secret, totp_enabled, totp_backup_codes from users where id = $1`, [userId]);
+  },
+  /** Store a pending (not-yet-enabled) encrypted secret, clearing any old codes. */
+  setTotpSecret(userId: number, encryptedSecret: string): Promise<unknown> {
+    return query(`update users set totp_secret = $2, totp_enabled = false, totp_backup_codes = '{}' where id = $1`, [userId, encryptedSecret]);
+  },
+  enableTotp(userId: number, backupHashes: string[]): Promise<unknown> {
+    return query(`update users set totp_enabled = true, totp_backup_codes = $2 where id = $1`, [userId, backupHashes]);
+  },
+  disableTotp(userId: number): Promise<unknown> {
+    return query(`update users set totp_secret = null, totp_enabled = false, totp_backup_codes = '{}' where id = $1`, [userId]);
+  },
+  /** Atomically spend a one-time backup code (hash). Returns true if it matched. */
+  async consumeBackupCode(userId: number, hash: string): Promise<boolean> {
+    const r = await queryOne<{ id: number }>(
+      `update users set totp_backup_codes = array_remove(totp_backup_codes, $2)
+       where id = $1 and $2 = any(totp_backup_codes) returning id`,
+      [userId, hash],
+    );
+    return r !== null;
   },
 
   /** Signup: user + student role, atomically. */

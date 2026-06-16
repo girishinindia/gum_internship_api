@@ -63,3 +63,13 @@ export const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+// --- 2FA (TOTP) ---
+export const twoFactorTokenSchema = z.object({
+  token: z.string().min(6).max(12), // 6-digit TOTP or an 8-digit backup code
+});
+export const twoFactorVerifySchema = z.object({
+  challengeToken: z.string().min(10),
+  token: z.string().min(6).max(12),
+});
+export type TwoFactorVerifyInput = z.infer<typeof twoFactorVerifySchema>;
