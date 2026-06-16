@@ -304,6 +304,57 @@ export const adminService = {
     };
   },
 
+  // --- Coupons ---
+  async listCoupons(status: string | undefined): Promise<Row[]> {
+    const rows = await query<Row>(
+      `select c.id, c.code, c.description, c.discount_type as "discountType", c.discount_value::float8 as "discountValue",
+              c.max_discount_amount::float8 as "maxDiscountAmount", c.internship_id as "internshipId", i.title as "internshipTitle",
+              c.valid_from as "validFrom", c.valid_until as "validUntil", c.max_redemptions as "maxRedemptions",
+              c.redemption_count as "redemptionCount", c.per_user_limit as "perUserLimit", c.min_order_amount::float8 as "minOrderAmount",
+              c.is_active as "isActive",
+              case
+                when not c.is_active then 'inactive'
+                when c.valid_until is not null and c.valid_until < now() then 'expired'
+                when c.max_redemptions is not null and c.redemption_count >= c.max_redemptions then 'used_up'
+                when c.valid_from is not null and c.valid_from > now() then 'scheduled'
+                else 'active'
+              end as status
+       from coupons c left join internships i on i.id = c.internship_id
+       order by c.created_at desc`,
+    );
+    return status && status !== 'all' ? rows.filter((r) => r.status === status) : rows;
+  },
+
+  async createCoupon(actorId: number, input: Row): Promise<Row> {
+    const row = await queryOne<Row>(
+      `insert into coupons (code, description, discount_type, discount_value, max_discount_amount, internship_id,
+          valid_from, valid_until, max_redemptions, per_user_limit, min_order_amount, is_active, created_by)
+       values (upper($1), $2, $3::discount_type, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       returning id, code`,
+      [input.code, input.description ?? null, input.discountType, input.discountValue, input.maxDiscountAmount ?? null,
+       input.internshipId ?? null, input.validFrom ?? null, input.validUntil ?? null, input.maxRedemptions ?? null,
+       input.perUserLimit ?? 1, input.minOrderAmount ?? 0, input.isActive ?? true, actorId],
+    );
+    await audit({ actorId, action: 'coupon.create', entityType: 'coupon', entityId: Number(row?.id), after: { code: input.code } });
+    return row as Row;
+  },
+
+  async updateCoupon(actorId: number, id: number, input: Row): Promise<Row> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const push = (col: string, v: unknown): void => { params.push(v); sets.push(`${col} = $${params.length}`); };
+    if (input.description !== undefined) push('description', input.description);
+    if (input.validUntil !== undefined) push('valid_until', input.validUntil);
+    if (input.maxRedemptions !== undefined) push('max_redemptions', input.maxRedemptions);
+    if (input.minOrderAmount !== undefined) push('min_order_amount', input.minOrderAmount);
+    if (input.isActive !== undefined) push('is_active', input.isActive);
+    if (sets.length === 0) throw AppError.validation('Provide at least one field');
+    params.push(id);
+    await query(`update coupons set ${sets.join(', ')}, updated_at = now() where id = $${params.length}`, params);
+    await audit({ actorId, action: 'coupon.update', entityType: 'coupon', entityId: id, after: input });
+    return { id, ...input } as Row;
+  },
+
   async cmsBanners(): Promise<Row[]> {
     return query<Row>(
       `select id, title, image_url as "imageUrl", link_url as "linkUrl", placement,

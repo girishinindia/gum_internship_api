@@ -70,6 +70,12 @@ function toDto(b: Record<string, unknown>): Record<string, unknown> {
 export const batchesService = {
   async create(user: AuthUser, internshipId: number, input: BatchCreateInput): Promise<unknown> {
     await assertCanManage(user, internshipId);
+    // Batches (seats/cohorts) only make sense for batch-paced internships. A
+    // self-paced internship has no seat limit — its enrolments don't use a batch.
+    const pace = await queryOne<{ pace_type: string }>(`select pace_type from internships where id = $1`, [internshipId]);
+    if (pace && pace.pace_type !== 'batch') {
+      throw AppError.validation('This internship is self-paced, so it has no cohorts/seats. Set its pace to "batch" first to add a cohort with seats.');
+    }
     const row = await queryOne<Record<string, unknown>>(
       `insert into internship_batches
          (internship_id, name, start_date, end_date, enrollment_deadline, seats_total,

@@ -133,6 +133,45 @@ router.get('/admin/analytics', requireAuth, requireRoles('moderator', 'finance_a
     ApiResponse.ok(res, await adminService.analytics(Number((req.query as unknown as { days: number }).days)));
   }));
 
+// ---- Coupons -------------------------------------------------------------
+const couponCreateSchema = z.object({
+  code: z.string().regex(/^[A-Za-z0-9_-]+$/, 'Letters, numbers, - and _ only').min(3).max(40),
+  description: z.string().max(300).optional(),
+  discountType: z.enum(['percent', 'flat']),
+  discountValue: z.coerce.number().positive(),
+  maxDiscountAmount: z.coerce.number().positive().optional(),
+  internshipId: z.coerce.number().int().positive().optional(),
+  validFrom: z.string().datetime({ offset: true }).optional(),
+  validUntil: z.string().datetime({ offset: true }).optional(),
+  maxRedemptions: z.coerce.number().int().positive().optional(),
+  perUserLimit: z.coerce.number().int().positive().default(1),
+  minOrderAmount: z.coerce.number().min(0).default(0),
+  isActive: z.boolean().default(true),
+}).refine((v) => v.discountType !== 'percent' || v.discountValue <= 100, { message: 'Percent discount must be ≤ 100' });
+
+router.get('/admin/coupons', requireAuth, requireRoles('finance_admin', 'moderator'),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.ok(res, await adminService.listCoupons(req.query.status as string | undefined));
+  }));
+
+router.post('/admin/coupons', requireAuth, requireRoles('finance_admin', 'moderator'), zodValidate(couponCreateSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.created(res, await adminService.createCoupon(uid(req), req.body as Record<string, unknown>));
+  }));
+
+router.patch('/admin/coupons/:id', requireAuth, requireRoles('finance_admin', 'moderator'),
+  zodValidate(z.object({ id: z.coerce.number().int().positive() }), 'params'),
+  zodValidate(z.object({
+    description: z.string().max(300).optional(),
+    validUntil: z.string().datetime({ offset: true }).nullable().optional(),
+    maxRedemptions: z.coerce.number().int().positive().nullable().optional(),
+    minOrderAmount: z.coerce.number().min(0).optional(),
+    isActive: z.boolean().optional(),
+  })),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.ok(res, await adminService.updateCoupon(uid(req), Number(req.params.id), req.body as Record<string, unknown>));
+  }));
+
 router.get('/admin/exports/:entity', requireAuth, requireRoles('finance_admin', 'moderator'),
   asyncHandler(async (req: Request, res: Response) => {
     await adminService.streamCsv(res, req.params.entity as 'users' | 'orders' | 'enrollments');

@@ -2,6 +2,7 @@ import { buildPagination } from '../../core/apiResponse';
 import type { PaginationMeta } from '../../core/apiResponse';
 import { AppError } from '../../core/appError';
 import { env } from '../../config/env';
+import { cacheGet, cacheSet } from '../../services/redis';
 import type { CatalogRow } from './repository';
 import { catalogRepository as repo } from './repository';
 import type { CatalogListInput } from './schemas';
@@ -35,8 +36,10 @@ function toSummary(r: CatalogRow): Record<string, unknown> {
 
 export const catalogService = {
   async categories(): Promise<unknown[]> {
+    const cached = await cacheGet('catalog:categories');
+    if (cached) return JSON.parse(cached) as unknown[];
     const rows = await repo.activeCategories();
-    return rows.map((c) => ({
+    const out = rows.map((c) => ({
       id: c.id,
       name: c.name,
       slug: c.slug,
@@ -44,6 +47,8 @@ export const catalogService = {
       iconUrl: c.icon_url,
       displayOrder: c.display_order,
     }));
+    await cacheSet('catalog:categories', JSON.stringify(out), 300); // 5 min
+    return out;
   },
 
   async list(input: CatalogListInput): Promise<{ items: unknown[]; pagination: PaginationMeta }> {
@@ -53,11 +58,14 @@ export const catalogService = {
   },
 
   async detail(slug: string): Promise<Record<string, unknown>> {
+    const cacheKey = `catalog:detail:${slug}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return JSON.parse(cached) as Record<string, unknown>;
     const row = await repo.detailBySlug(slug);
     if (!row) throw AppError.notFound('Internship');
     const price = money(row.price as string);
     const gstRate = Number(row.gst_rate);
-    return {
+    const dto: Record<string, unknown> = {
       id: row.id,
       title: row.title,
       slug: row.slug,
@@ -88,6 +96,8 @@ export const catalogService = {
       upcomingBatches: row.upcoming_batches,
       publishedAt: row.published_at,
     };
+    await cacheSet(cacheKey, JSON.stringify(dto), 60); // 1 min — short, catalog tolerates slight staleness
+    return dto;
   },
 
   async instructor(profileId: number): Promise<Record<string, unknown>> {
