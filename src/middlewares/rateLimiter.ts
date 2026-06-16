@@ -3,6 +3,7 @@ import type { RequestHandler } from 'express';
 import { env, isTest } from '../config/env';
 import { ApiResponse } from '../core/apiResponse';
 import { ErrorCodes } from '../core/errorCodes';
+import { rateLimitStore } from '../services/redis';
 
 interface RateLimiterOptions {
   windowMs?: number;
@@ -21,6 +22,9 @@ export function makeRateLimiter(opts: RateLimiterOptions): RequestHandler {
     limit: isTest ? Number.MAX_SAFE_INTEGER : opts.max,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    // Distributed limits when Redis is configured; in-memory otherwise.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    store: rateLimitStore() as any,
     keyGenerator: opts.keyGenerator,
     handler: (_req, res) => {
       ApiResponse.fail(

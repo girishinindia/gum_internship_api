@@ -212,6 +212,9 @@ const envSchema = z.object({
   SENTRY_ENVIRONMENT: z.string().optional(),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
 
+  // --- Redis (optional) — distributed rate-limiting + cache. Unset = in-memory. ---
+  REDIS_URL: z.string().optional(),
+
   // --- Background jobs ---
   // 'inproc' = the original in-process serial queue (default, unchanged behaviour).
   // 'pg'     = durable Postgres-backed queue (survives restarts, retries on failure).
