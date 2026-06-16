@@ -9,14 +9,17 @@ import { ApiResponse } from './core/apiResponse';
 import { AppError } from './core/appError';
 import { errorMiddleware, notFoundHandler } from './core/errorMiddleware';
 import { generalLimiter } from './middlewares/rateLimiter';
+import { query } from './db/pool';
 import { apiRouter } from './routes/index';
 import { registerNotificationSubscribers } from './modules/notifications/service';
 import { registerGamificationSubscribers } from './modules/gamification/service';
 import { registerCpdSubscribers } from './modules/cpd/service';
+import { registerEnrollmentJobs } from './modules/enrollments/service';
 
 registerNotificationSubscribers();
 registerGamificationSubscribers();
 registerCpdSubscribers();
+registerEnrollmentJobs(); // durable-queue handlers (active only when JOB_QUEUE_DRIVER=pg)
 
 export function createApp(): express.Express {
   const app = express();
@@ -75,6 +78,13 @@ export function createApp(): express.Express {
       uptimeSeconds: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Readiness — checks the DB so orchestrators only route traffic when usable.
+  app.get('/ready', (_req, res) => {
+    void query('select 1')
+      .then(() => ApiResponse.ok(res, { status: 'ready' }))
+      .catch(() => ApiResponse.fail(res, 503, 'INTERNAL_ERROR', 'Database not reachable'));
   });
 
   // Dev-only error probe for the acceptance checklist (proves AppError → envelope).

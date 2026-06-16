@@ -1,13 +1,21 @@
 import { env } from './config/env'; // first import: crashes loudly if env is invalid
+import { initSentry } from './services/sentry';
+
+initSentry(); // before app errors can occur; no-op unless SENTRY_DSN is set
+
 import { app } from './app';
 import { logger } from './core/logger';
 import { closePool } from './db/pool';
+import { startWorker, stopWorker } from './services/durableQueue';
 
 import { liveService } from './modules/live/service';
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'internship-api listening');
 });
+
+// Durable background-job worker (only when JOB_QUEUE_DRIVER=pg; default in-process).
+if (env.JOB_QUEUE_DRIVER === 'pg') startWorker();
 
 // Live-session reminder sweep (T-24h / T-1h). Swap for a real scheduler with
 // the queue upgrade; sweep is idempotent via sent-markers.
@@ -20,6 +28,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Shutting down…');
   server.close(async () => {
     try {
+      await stopWorker();
       await closePool();
       logger.info('Closed HTTP server and DB pool. Bye.');
       process.exit(0);

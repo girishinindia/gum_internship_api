@@ -5,6 +5,7 @@ import { ApiResponse } from './apiResponse';
 import { ErrorCodes } from './errorCodes';
 import { logger } from './logger';
 import { isProd } from '../config/env';
+import { captureException } from '../services/sentry';
 
 /** 404 for any route no module claimed. Mounted after all routers. */
 export function notFoundHandler(req: Request, res: Response): void {
@@ -51,6 +52,7 @@ export function errorMiddleware(
 
   const message = err instanceof Error ? err.message : String(err);
   logger.error({ err, requestId: req.id, path: req.path }, `Unhandled error: ${message}`);
+  captureException(err, { requestId: req.id, path: req.path, method: req.method });
   ApiResponse.fail(
     res,
     500,

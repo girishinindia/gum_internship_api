@@ -206,6 +206,18 @@ const envSchema = z.object({
   // Per-user daily spend ceiling across all AI features (USD). 0 = unlimited.
   AI_DAILY_COST_CAP_USD: z.coerce.number().min(0).default(0.5),
   AI_TRANSLATE_MODEL: z.string().min(1).default('claude-3-5-haiku-20241022'),
+
+  // --- Observability (Sentry) — all optional; unset = disabled (dev/test no-op) ---
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
+
+  // --- Background jobs ---
+  // 'inproc' = the original in-process serial queue (default, unchanged behaviour).
+  // 'pg'     = durable Postgres-backed queue (survives restarts, retries on failure).
+  JOB_QUEUE_DRIVER: z.enum(['inproc', 'pg']).default('inproc'),
+  JOB_QUEUE_POLL_MS: z.coerce.number().int().positive().default(2000),
+  JOB_QUEUE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 export type Env = z.infer<typeof envSchema>;

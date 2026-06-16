@@ -7,6 +7,7 @@ import { logger } from '../../core/logger';
 import { env } from '../../config/env';
 import { query, queryOne, tx } from '../../db/pool';
 import { jobQueue } from '../../services/jobQueue';
+import { isDurable, publishJob, registerJob } from '../../services/durableQueue';
 import { notifyService } from '../../services/notify';
 import { generateOfferLetterPdf } from '../../services/pdf';
 import { quizGate } from '../../services/quizGate';
@@ -357,57 +358,67 @@ export const enrollmentsService = {
     return e ? { enrollmentId: e.id, status: e.status } : null;
   },
 
-  /** Async offer-letter pipeline: pdf → Bunny private zone → email. */
+  /** Queue the offer-letter pipeline. Durable (Postgres) when JOB_QUEUE_DRIVER=pg,
+   *  otherwise the original in-process queue. Same idempotent work either way. */
   queueOfferLetter(enrollmentId: number): void {
-    jobQueue.enqueue(`offer-letter:${enrollmentId}`, async () => {
-      const enrollment = await repo.findById(enrollmentId);
-      if (!enrollment || enrollment.status !== 'active' || enrollment.offer_letter_no) return;
-      const [user, internship] = await Promise.all([
-        authRepository.findUserById(enrollment.user_id),
-        repo.internshipLite(enrollment.internship_id),
-      ]);
-      if (!user || !internship) return;
-
-      let batchName: string | null = null;
-      let start: string | null = null;
-      let end: string | null = null;
-      if (enrollment.batch_id) {
-        await tx(async (client) => {
-          const b = await repo.batchForUpdate(client, enrollment.batch_id as number);
-          if (b) {
-            batchName = b.name;
-            start = dayjs(b.start_date).format('DD MMM YYYY');
-            end = dayjs(b.end_date).format('DD MMM YYYY');
-          }
-        });
-      }
-
-      const refNo = await repo.nextOfferLetterNo();
-      const pdf = await generateOfferLetterPdf({
-        refNo,
-        studentName: user.full_name,
-        internshipTitle: internship.title,
-        instructorName: internship.instructor_name,
-        batchName,
-        startDate: start,
-        endDate: end,
-        durationWeeks: internship.duration_weeks,
-        issuedOn: dayjs().format('DD MMM YYYY'),
-      });
-      const path = await storageService.upload(
-        'private',
-        `offer-letters/${refNo}.pdf`,
-        pdf,
-        'application/pdf',
-      );
-      await repo.setOfferLetter(enrollment.id, refNo, path);
-      await notifyService.sendEmail(
-        user.email ?? '',
-        user.full_name,
-        `Your offer letter — ${internship.title}`,
-        `<p>Hi ${user.full_name},</p><p>Welcome aboard! Your internship offer letter (ref <strong>${refNo}</strong>) is attached to your dashboard. Log in to download it.</p>`,
-      );
-      logger.info({ enrollmentId, refNo }, 'offer letter issued');
-    });
+    if (isDurable()) {
+      void publishJob('offer-letter', { enrollmentId }).catch((err) =>
+        logger.error({ err, enrollmentId }, 'failed to enqueue offer-letter job'));
+      return;
+    }
+    jobQueue.enqueue(`offer-letter:${enrollmentId}`, () => runOfferLetter(enrollmentId));
   },
 };
+
+/** The offer-letter work itself — shared by the in-process and durable queues.
+ *  Idempotent: returns early if the enrolment isn't active or already has one. */
+export async function runOfferLetter(enrollmentId: number): Promise<void> {
+  const enrollment = await repo.findById(enrollmentId);
+  if (!enrollment || enrollment.status !== 'active' || enrollment.offer_letter_no) return;
+  const [user, internship] = await Promise.all([
+    authRepository.findUserById(enrollment.user_id),
+    repo.internshipLite(enrollment.internship_id),
+  ]);
+  if (!user || !internship) return;
+
+  let batchName: string | null = null;
+  let start: string | null = null;
+  let end: string | null = null;
+  if (enrollment.batch_id) {
+    await tx(async (client) => {
+      const b = await repo.batchForUpdate(client, enrollment.batch_id as number);
+      if (b) {
+        batchName = b.name;
+        start = dayjs(b.start_date).format('DD MMM YYYY');
+        end = dayjs(b.end_date).format('DD MMM YYYY');
+      }
+    });
+  }
+
+  const refNo = await repo.nextOfferLetterNo();
+  const pdf = await generateOfferLetterPdf({
+    refNo,
+    studentName: user.full_name,
+    internshipTitle: internship.title,
+    instructorName: internship.instructor_name,
+    batchName,
+    startDate: start,
+    endDate: end,
+    durationWeeks: internship.duration_weeks,
+    issuedOn: dayjs().format('DD MMM YYYY'),
+  });
+  const path = await storageService.upload('private', `offer-letters/${refNo}.pdf`, pdf, 'application/pdf');
+  await repo.setOfferLetter(enrollment.id, refNo, path);
+  await notifyService.sendEmail(
+    user.email ?? '',
+    user.full_name,
+    `Your offer letter — ${internship.title}`,
+    `<p>Hi ${user.full_name},</p><p>Welcome aboard! Your internship offer letter (ref <strong>${refNo}</strong>) is attached to your dashboard. Log in to download it.</p>`,
+  );
+  logger.info({ enrollmentId, refNo }, 'offer letter issued');
+}
+
+/** Register durable-queue handlers owned by the enrolments module. */
+export function registerEnrollmentJobs(): void {
+  registerJob('offer-letter', (p) => runOfferLetter(Number((p as { enrollmentId: number }).enrollmentId)));
+}
