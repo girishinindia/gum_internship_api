@@ -59,9 +59,15 @@ export const catalogRepository = {
     if (input.level) add(`i.level = $N`, input.level);
     if (input.durationWeeks) add(`i.duration_weeks <= $N`, input.durationWeeks);
     if (input.language) add(`i.languages @> array[$N]::text[]`, input.language.toLowerCase());
+
+    // Full-text search (Postgres FTS): weighted tsvector + relevance ranking.
+    // websearch_to_tsquery safely parses user input (quotes, OR, -exclude).
+    let rankExpr = '';
     if (input.q) {
-      params.push(`%${input.q}%`);
-      where.push(`(i.title ilike $${params.length} or i.short_description ilike $${params.length})`);
+      params.push(input.q);
+      const p = params.length;
+      where.push(`i.search_tsv @@ websearch_to_tsquery('english', $${p})`);
+      rankExpr = `ts_rank(i.search_tsv, websearch_to_tsquery('english', $${p})) desc, `;
     }
 
     const offset = (input.page - 1) * input.limit;
@@ -77,7 +83,7 @@ export const catalogRepository = {
        join instructor_profiles ip on ip.id = i.instructor_profile_id
        join users u on u.id = ip.user_id
        where ${where.join(' and ')}
-       order by ${SORTS[input.sort]}
+       order by ${rankExpr}${SORTS[input.sort]}
        limit ${input.limit} offset ${offset}`,
       params,
     );
