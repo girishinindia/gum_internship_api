@@ -27,16 +27,34 @@ const taskUpsertSchema = z.object({
   isMandatory: z.boolean().default(true),
 });
 
+/** A github_url submission must actually point at a GitHub repo (host + owner/repo). */
+const GITHUB_RE = /^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\/.*)?$/i;
+
 const submitSchema = z
   .object({
     enrollmentId: z.coerce.number().int().positive(),
     submissionType: z.enum(['file', 'github_url', 'live_url', 'video_url']),
     fileUrl: z.string().min(3).optional(),
-    urlValue: z.string().url().optional(),
+    urlValue: z.string().optional(),
     notes: z.string().max(2000).optional(),
   })
-  .refine((v) => (v.submissionType === 'file' ? !!v.fileUrl : !!v.urlValue), {
-    message: 'file submissions need fileUrl; url submissions need urlValue',
+  .superRefine((v, ctx) => {
+    if (v.submissionType === 'file') {
+      if (!v.fileUrl) ctx.addIssue({ code: 'custom', path: ['fileUrl'], message: 'File submissions need an uploaded file' });
+      return;
+    }
+    const url = v.urlValue?.trim();
+    if (!url) {
+      ctx.addIssue({ code: 'custom', path: ['urlValue'], message: 'Enter the submission URL' });
+      return;
+    }
+    if (!/^https?:\/\/\S+\.\S+/i.test(url)) {
+      ctx.addIssue({ code: 'custom', path: ['urlValue'], message: 'Enter a valid URL starting with http:// or https://' });
+      return;
+    }
+    if (v.submissionType === 'github_url' && !GITHUB_RE.test(url)) {
+      ctx.addIssue({ code: 'custom', path: ['urlValue'], message: 'Enter a valid GitHub repository URL, e.g. https://github.com/your-name/your-repo' });
+    }
   });
 
 const reviewSchema = z.object({
