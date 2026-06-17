@@ -10,6 +10,7 @@ import { paymentsService as svc } from './service';
 import {
   adminRefundListSchema,
   couponValidateSchema,
+  orderConfirmSchema,
   orderCreateSchema,
   orderIdParam,
   refundDecisionSchema,
@@ -19,6 +20,7 @@ import {
 import type {
   AdminRefundListInput,
   CouponValidateInput,
+  OrderConfirmInput,
   OrderCreateInput,
   RefundDecisionInput,
 } from './schemas';
@@ -79,6 +81,21 @@ router.post(
   zodValidate(orderIdParam, 'params'),
   asyncHandler(async (req: Request, res: Response) => {
     ApiResponse.ok(res, await svc.retryOrder(uid(req), Number(req.params.orderId)));
+  }),
+);
+
+/** Razorpay Checkout success handler → confirm the payment synchronously. */
+router.post(
+  '/orders/:orderId/confirm',
+  requireAuth,
+  requireRoles('student'),
+  zodValidate(orderIdParam, 'params'),
+  zodValidate(orderConfirmSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    ApiResponse.ok(
+      res,
+      await svc.confirmCheckout(uid(req), Number(req.params.orderId), req.body as OrderConfirmInput),
+    );
   }),
 );
 

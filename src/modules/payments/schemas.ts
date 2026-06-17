@@ -18,6 +18,13 @@ export type OrderCreateInput = z.infer<typeof orderCreateSchema>;
 export const orderIdParam = z.object({ orderId: z.coerce.number().int().positive() });
 export const refundIdParam = z.object({ refundId: z.coerce.number().int().positive() });
 
+/** Razorpay Checkout success handler → synchronous server-side confirmation. */
+export const orderConfirmSchema = z.object({
+  razorpayPaymentId: z.string().min(4).max(120),
+  razorpaySignature: z.string().min(4).max(256),
+});
+export type OrderConfirmInput = z.infer<typeof orderConfirmSchema>;
+
 export const couponValidateSchema = z.object({
   code: z.string().min(2).max(40).toUpperCase(),
   internshipId: z.coerce.number().int().positive(),

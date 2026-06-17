@@ -22,7 +22,7 @@ import {
 } from './gst';
 import type { CouponRow, OrderRow } from './repository';
 import { paymentsRepository as repo } from './repository';
-import type { CouponValidateInput, OrderCreateInput } from './schemas';
+import type { CouponValidateInput, OrderConfirmInput, OrderCreateInput } from './schemas';
 
 interface CouponCheck {
   valid: boolean;
@@ -194,6 +194,36 @@ export const paymentsService = {
     );
     await repo.setRazorpayOrderId(order.id, razorpayOrderId);
     return checkoutParams((await repo.orderById(order.id)) as OrderRow);
+  },
+
+  /**
+   * Synchronous confirmation from Razorpay Checkout's success handler. Verifies
+   * the handler signature with the KEY SECRET (no webhook secret required), then
+   * runs the SAME idempotent capture pipeline as the webhook — so enrolment +
+   * invoice happen instantly and the browser never has to poll. The webhook,
+   * once configured, is a redundant backup (deduped by razorpay_payment_id).
+   */
+  async confirmCheckout(userId: number, orderId: number, input: OrderConfirmInput): Promise<Record<string, unknown>> {
+    const order = await repo.orderById(orderId);
+    if (!order || order.user_id !== userId) throw AppError.notFound('Order');
+    if (order.status === 'paid') return { status: 'paid', orderId: order.id };
+    if (order.status === 'cancelled' || order.status === 'refunded') {
+      throw AppError.conflict('Order can no longer be paid — create a new one');
+    }
+    if (!order.razorpay_order_id) throw AppError.conflict('Order has no payment session');
+    if (!razorpayService.verifyCheckoutSignature(order.razorpay_order_id, input.razorpayPaymentId, input.razorpaySignature)) {
+      throw new AppError(ErrorCodes.WEBHOOK_SIGNATURE_INVALID, 'Payment could not be verified');
+    }
+    // The signature proves Razorpay accepted this payment for THIS order, so we
+    // finalise against the amount we charged; onPaymentCaptured re-checks it and
+    // dedups, making a later webhook delivery a no-op.
+    const amountPaise = Math.round(Number(order.total_amount) * 100);
+    await this.onPaymentCaptured(
+      { id: input.razorpayPaymentId, order_id: order.razorpay_order_id, amount: amountPaise, method: 'razorpay' },
+      { source: 'checkout-handler', confirmedAt: new Date().toISOString() },
+    );
+    const fresh = await repo.orderById(orderId);
+    return { status: fresh?.status ?? 'pending', orderId };
   },
 
   async myOrders(userId: number, page: number, limit: number): Promise<{ items: unknown[]; pagination: PaginationMeta }> {
