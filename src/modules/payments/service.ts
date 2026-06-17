@@ -87,6 +87,9 @@ function checkoutParams(order: OrderRow): Record<string, unknown> {
     razorpayOrderId: order.razorpay_order_id,
     amountPaise: Math.round(Number(order.total_amount) * 100),
     currency: 'INR',
+    // The client must follow the SERVER's mode, not a public env key: in dry-run
+    // there is no real gateway, so the client confirms with the dev token.
+    devMode: env.PAYMENTS_DRY_RUN,
     prefill: { name: order.billing_name, email: order.billing_email, contact: order.billing_phone },
   };
 }

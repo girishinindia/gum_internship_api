@@ -58,6 +58,24 @@ export const bunnyStreamService = {
   },
 
   /**
+   * Is this video actually present and playable on Bunny? Used to avoid handing
+   * the classroom an embed URL that renders Bunny's own 404 page. Only an
+   * EXPLICIT 404 marks it unavailable; transient errors fall through to "let the
+   * player try" so a hiccup never hides a real video. Dry-run assumes ok.
+   */
+  async videoExists(videoId: string): Promise<boolean> {
+    if (env.STORAGE_DRY_RUN || !videoId) return env.STORAGE_DRY_RUN;
+    try {
+      const res = await fetch(`${API}/${env.BUNNY_STREAM_LIBRARY_ID}/videos/${videoId}`, {
+        headers: { AccessKey: env.BUNNY_STREAM_API_KEY, accept: 'application/json' },
+      });
+      return res.status !== 404;
+    } catch {
+      return true;
+    }
+  },
+
+  /**
    * Token-authenticated playback (Bunny "Embed View Token Authentication"):
    * token = sha256hex(token_auth_key + video_id + expires [+ ip when locked]).
    * Short TTL (env, default 4h). Returns both the iframe embed URL and the

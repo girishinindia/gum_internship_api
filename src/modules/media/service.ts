@@ -192,14 +192,24 @@ export const mediaService = {
     if (!row.bunny_video_id || row.video_status !== 'ready') {
       throw AppError.conflict('Video is still processing — try again shortly');
     }
+    // Don't hand back an embed URL that would render Bunny's own 404 page.
+    if (!(await bunnyStreamService.videoExists(row.bunny_video_id))) {
+      throw AppError.conflict('This video isn’t available right now — please contact support.');
+    }
     return bunnyStreamService.signedPlayback(row.bunny_video_id, clientIp);
   },
 
-  /** Signed document URL (Bunny Storage private path → time-limited link). */
+  /**
+   * Document link. A lesson's document_url is EITHER a full external link
+   * (e.g. a Google Doc) — returned as-is — OR a Bunny Storage private path,
+   * which we turn into a time-limited signed URL. Prefixing the CDN host onto
+   * an already-absolute URL is what produced the b-cdn.net/https://… 404.
+   */
   async document(userId: number, lessonId: number, enrollmentId: number): Promise<Record<string, unknown>> {
     const row = await this.lessonAccessRow(userId, lessonId, enrollmentId);
     if (row.type !== 'document') throw AppError.validation('This lesson is not a document');
     if (!row.document_url) throw AppError.conflict('Document is not available yet');
+    if (/^https?:\/\//i.test(row.document_url)) return { url: row.document_url, external: true };
     return storageService.signedPrivateUrl(row.document_url);
   },
 
