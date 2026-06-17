@@ -90,9 +90,12 @@ export const paymentsRepository = {
   },
 
   async userCouponUses(couponId: number, userId: number): Promise<number> {
+    // Per-user limit counts ACTUAL redemptions (paid) only. Counting unpaid
+    // 'created'/'pending' orders wrongly blocked re-applying a coupon after a
+    // started-but-abandoned checkout ("you have already used this coupon").
     const row = await queryOne<{ n: number }>(
       `select count(*)::int8 as n from orders
-       where coupon_id = $1 and user_id = $2 and status in ('created', 'pending', 'paid')`,
+       where coupon_id = $1 and user_id = $2 and status = 'paid'`,
       [couponId, userId],
     );
     return row?.n ?? 0;

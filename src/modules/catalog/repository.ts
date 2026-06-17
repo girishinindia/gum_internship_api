@@ -134,7 +134,14 @@ export const catalogRepository = {
                 ) order by b.start_date)
                 from internship_batches b
                 where b.internship_id = i.id and b.status in ('scheduled', 'enrolling')
-              ), '[]'::jsonb) as upcoming_batches
+              ), '[]'::jsonb) as upcoming_batches,
+              coalesce((
+                select jsonb_agg(jsonb_build_object(
+                  'id', b.id, 'name', b.name, 'startDate', b.start_date, 'status', b.status
+                ) order by b.start_date)
+                from internship_batches b
+                where b.internship_id = i.id
+              ), '[]'::jsonb) as batches
        from internships i
        join categories c on c.id = i.category_id
        join instructor_profiles ip on ip.id = i.instructor_profile_id

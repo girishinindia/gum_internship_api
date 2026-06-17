@@ -87,6 +87,20 @@ router.get(
   }),
 );
 
+router.get(
+  '/lessons/:lessonId/document',
+  requireAuth,
+  zodValidate(lessonIdParam, 'params'),
+  zodValidate(playQuery, 'query'),
+  asyncHandler(async (req: Request, res: Response) => {
+    const q = req.query as unknown as { enrollmentId: number };
+    ApiResponse.ok(
+      res,
+      await mediaService.document(user(req).id, Number(req.params.lessonId), q.enrollmentId),
+    );
+  }),
+);
+
 router.post(
   '/lessons/:lessonId/progress',
   requireAuth,

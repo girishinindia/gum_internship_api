@@ -94,6 +94,7 @@ export const catalogService = {
       instructor: row.instructor,
       curriculum: row.curriculum,
       upcomingBatches: row.upcoming_batches,
+      batches: row.batches, // every selectable batch (for reliable label lookup)
       publishedAt: row.published_at,
     };
     await cacheSet(cacheKey, JSON.stringify(dto), 60); // 1 min — short, catalog tolerates slight staleness

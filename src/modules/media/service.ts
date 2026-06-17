@@ -126,13 +126,22 @@ export const mediaService = {
    * every EARLIER mandatory lesson (section order, then lesson order) must be
    * completed first (env SEQUENTIAL_UNLOCK).
    */
-  async play(userId: number, lessonId: number, enrollmentId: number, clientIp: string | null): Promise<Record<string, unknown>> {
+  /**
+   * Shared access guard for protected lesson content. Enforces: active
+   * enrollment owning the lesson's internship (or isPreview) and the
+   * sequential-unlock rule. Returns the lesson row for the caller to finish.
+   */
+  async lessonAccessRow(userId: number, lessonId: number, enrollmentId: number): Promise<{
+    lesson_id: number; type: string; bunny_video_id: string | null; video_status: string | null;
+    document_url: string | null; is_preview: boolean; internship_id: number;
+    e_user: number | null; e_status: string | null; e_internship: number | null;
+  }> {
     const row = await queryOne<{
       lesson_id: number; type: string; bunny_video_id: string | null; video_status: string | null;
-      is_preview: boolean; internship_id: number; e_user: number | null; e_status: string | null;
-      e_internship: number | null;
+      document_url: string | null; is_preview: boolean; internship_id: number;
+      e_user: number | null; e_status: string | null; e_internship: number | null;
     }>(
-      `select l.id as lesson_id, l.type, l.bunny_video_id, l.video_status, l.is_preview,
+      `select l.id as lesson_id, l.type, l.bunny_video_id, l.video_status, l.document_url, l.is_preview,
               s.internship_id, e.user_id as e_user, e.status as e_status, e.internship_id as e_internship
        from lessons l
        join curriculum_sections s on s.id = l.section_id
@@ -141,12 +150,11 @@ export const mediaService = {
       [lessonId, userId, enrollmentId],
     );
     if (!row) throw AppError.notFound('Lesson');
-    if (row.type !== 'video') throw AppError.validation('Only video lessons have playback');
 
     if (!row.is_preview) {
       const owned = row.e_user === userId && row.e_internship === row.internship_id;
       if (!owned || row.e_status !== 'active') {
-        throw AppError.forbidden('Active enrollment required to watch this lesson');
+        throw AppError.forbidden('Active enrollment required to open this lesson');
       }
       if (env.SEQUENTIAL_UNLOCK) {
         const blocker = await queryOne<{ id: number; title: string }>(
@@ -174,10 +182,25 @@ export const mediaService = {
         }
       }
     }
+    return row;
+  },
+
+  /** Signed video playback (Bunny Stream token URL). */
+  async play(userId: number, lessonId: number, enrollmentId: number, clientIp: string | null): Promise<Record<string, unknown>> {
+    const row = await this.lessonAccessRow(userId, lessonId, enrollmentId);
+    if (row.type !== 'video') throw AppError.validation('Only video lessons have playback');
     if (!row.bunny_video_id || row.video_status !== 'ready') {
       throw AppError.conflict('Video is still processing — try again shortly');
     }
     return bunnyStreamService.signedPlayback(row.bunny_video_id, clientIp);
+  },
+
+  /** Signed document URL (Bunny Storage private path → time-limited link). */
+  async document(userId: number, lessonId: number, enrollmentId: number): Promise<Record<string, unknown>> {
+    const row = await this.lessonAccessRow(userId, lessonId, enrollmentId);
+    if (row.type !== 'document') throw AppError.validation('This lesson is not a document');
+    if (!row.document_url) throw AppError.conflict('Document is not available yet');
+    return storageService.signedPrivateUrl(row.document_url);
   },
 
   /**
