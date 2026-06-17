@@ -346,6 +346,7 @@ export const adminService = {
     if (input.description !== undefined) push('description', input.description);
     if (input.validUntil !== undefined) push('valid_until', input.validUntil);
     if (input.maxRedemptions !== undefined) push('max_redemptions', input.maxRedemptions);
+    if (input.perUserLimit !== undefined) push('per_user_limit', input.perUserLimit);
     if (input.minOrderAmount !== undefined) push('min_order_amount', input.minOrderAmount);
     if (input.isActive !== undefined) push('is_active', input.isActive);
     if (sets.length === 0) throw AppError.validation('Provide at least one field');

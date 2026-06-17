@@ -22,6 +22,10 @@ const LESSON_TYPE = ['video', 'live', 'document', 'quiz'] as const;
 const STATUS = ['draft', 'pending_review', 'published', 'rejected', 'archived'] as const;
 
 /* ---------------------------------- schemas ------------------------------- */
+const faqsSchema = z
+  .array(z.object({ question: z.string().min(3).max(300), answer: z.string().min(1).max(2000) }))
+  .max(30);
+
 export const createInternshipSchema = z
   .object({
     title: z.string().min(4).max(160),
@@ -31,6 +35,7 @@ export const createInternshipSchema = z
     description: z.string().max(20000).optional(),
     outcomes: z.array(z.string().min(1).max(300)).max(40).default([]),
     prerequisites: z.array(z.string().min(1).max(300)).max(40).default([]),
+    faqs: faqsSchema.default([]),
     languages: z.array(z.string().min(1).max(40)).min(1).default(['english']),
     providerType: z.enum(PROVIDER).default('system'),
     pricingType: z.enum(PRICING).default('free'),
@@ -58,6 +63,7 @@ export const patchInternshipSchema = z
     description: z.string().max(20000).nullable().optional(),
     outcomes: z.array(z.string().min(1).max(300)).max(40).optional(),
     prerequisites: z.array(z.string().min(1).max(300)).max(40).optional(),
+    faqs: faqsSchema.optional(),
     languages: z.array(z.string().min(1).max(40)).min(1).optional(),
     providerType: z.enum(PROVIDER).optional(),
     pricingType: z.enum(PRICING).optional(),
@@ -236,7 +242,7 @@ async function detailById(internshipId: number): Promise<Record<string, unknown>
     `select jsonb_build_object(
         'id', i.id, 'title', i.title, 'slug', i.slug, 'status', i.status,
         'shortDescription', i.short_description, 'description', i.description,
-        'outcomes', i.outcomes, 'prerequisites', i.prerequisites, 'languages', i.languages,
+        'outcomes', i.outcomes, 'prerequisites', i.prerequisites, 'faqs', i.faqs, 'languages', i.languages,
         'providerType', i.provider_type, 'pricingType', i.pricing_type, 'price', i.price,
         'stipendAmount', i.stipend_amount, 'currency', i.currency, 'gstRate', i.gst_rate,
         'deliveryMode', i.delivery_mode, 'paceType', i.pace_type, 'level', i.level,
@@ -298,15 +304,15 @@ export const authoringService = {
     const created = await queryOne<{ id: number }>(
       `insert into internships
          (instructor_profile_id, category_id, created_by, title, slug, short_description, description,
-          outcomes, prerequisites, languages, provider_type, pricing_type, price, stipend_amount,
+          outcomes, prerequisites, faqs, languages, provider_type, pricing_type, price, stipend_amount,
           delivery_mode, pace_type, level, duration_weeks, thumbnail_url)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::provider_type, $12::pricing_type, $13, $14,
-               $15::delivery_mode, $16::pace_type, $17::internship_level, $18, $19)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12::provider_type, $13::pricing_type, $14, $15,
+               $16::delivery_mode, $17::pace_type, $18::internship_level, $19, $20)
        returning id`,
       [
         instructorProfileId, input.categoryId, user.id, input.title, slug,
         input.shortDescription ?? null, input.description ?? null,
-        input.outcomes, input.prerequisites, input.languages,
+        input.outcomes, input.prerequisites, JSON.stringify(input.faqs ?? []), input.languages,
         input.providerType, input.pricingType, input.price, input.stipendAmount ?? null,
         input.deliveryMode, input.paceType, input.level ?? null, input.durationWeeks ?? null,
         input.thumbnailUrl ?? null,
@@ -355,6 +361,7 @@ export const authoringService = {
     if (input.description !== undefined) push('description', input.description);
     if (input.outcomes !== undefined) push('outcomes', input.outcomes);
     if (input.prerequisites !== undefined) push('prerequisites', input.prerequisites);
+    if (input.faqs !== undefined) push('faqs', JSON.stringify(input.faqs), 'jsonb');
     if (input.languages !== undefined) push('languages', input.languages);
     if (input.providerType !== undefined) push('provider_type', input.providerType, 'provider_type');
     if (pricingType !== undefined) push('pricing_type', pricingType, 'pricing_type');

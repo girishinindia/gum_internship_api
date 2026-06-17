@@ -31,7 +31,12 @@ router.get('/admin/instructors',
               ip.kyc_status as "kycStatus", ip.expertise, ip.bio, ip.gstin,
               ip.bank_account_last4 as "bankLast4", ip.bank_ifsc as "bankIfsc",
               ip.kyc_documents as "kycDocuments", ip.revenue_share_percent as "revenueSharePercent",
-              ip.created_at as "appliedAt", count(*) over()::int8 as total_count
+              ip.created_at as "appliedAt",
+              (select count(*) from internships i where i.instructor_profile_id = ip.id)::int as "internshipCount",
+              coalesce((select sum(e.amount) from instructor_earnings e where e.instructor_profile_id = ip.id and e.status <> 'reversed'), 0)::float8 as "lifetimeEarned",
+              coalesce((select sum(e.amount) from instructor_earnings e where e.instructor_profile_id = ip.id and e.status = 'available'), 0)::float8 as "availableEarnings",
+              coalesce((select sum(e.amount) from instructor_earnings e where e.instructor_profile_id = ip.id and e.status = 'settled'), 0)::float8 as "settledEarnings",
+              count(*) over()::int8 as total_count
        from instructor_profiles ip join users u on u.id = ip.user_id
        where ($1::kyc_status is null or ip.kyc_status = $1)
        order by ip.created_at asc
@@ -165,6 +170,7 @@ router.patch('/admin/coupons/:id', requireAuth, requireRoles('finance_admin', 'm
     description: z.string().max(300).optional(),
     validUntil: z.string().datetime({ offset: true }).nullable().optional(),
     maxRedemptions: z.coerce.number().int().positive().nullable().optional(),
+    perUserLimit: z.coerce.number().int().positive().optional(),
     minOrderAmount: z.coerce.number().min(0).optional(),
     isActive: z.boolean().optional(),
   })),

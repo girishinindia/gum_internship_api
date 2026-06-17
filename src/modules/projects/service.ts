@@ -56,6 +56,12 @@ function deadlineFor(batchStart: string | null, dueOffsetDays: number | null, re
   return dayjs(batchStart).add(dueOffsetDays, 'day').format('YYYY-MM-DD');
 }
 
+/** When a weekly task opens: the start of its week (batch start + (week-1)×7d). */
+function availableFromFor(batchStart: string | null, weekNumber: number | null): string | null {
+  if (!batchStart || !weekNumber || weekNumber < 1) return null;
+  return dayjs(batchStart).add((weekNumber - 1) * 7, 'day').format('YYYY-MM-DD');
+}
+
 export const projectsService = {
   /** Instructor: create/update a weekly task (rubric validated). */
   async upsertTask(user: AuthUser, projectId: number, taskId: number | null, input: Record<string, unknown>): Promise<unknown> {
@@ -126,6 +132,7 @@ export const projectsService = {
       weight: Number(t.weight),
       isMandatory: t.is_mandatory,
       rubric: t.rubric,
+      availableFrom: availableFromFor(e.batch_start, t.week_number as number | null),
       deadline: deadlineFor(e.batch_start, t.due_offset_days as number | null, t.resubmit_due_on as string | null),
       latestSubmission: t.submission_id
         ? {
